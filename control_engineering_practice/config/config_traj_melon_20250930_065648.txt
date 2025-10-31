@@ -1,0 +1,22 @@
+{
+  "center": [
+    0.0,
+    0.0,
+    1.5
+  ],
+  "start_radii": [
+    1.0,
+    0.5
+  ],
+  "end_radii": [
+    1.0,
+    0.5
+  ],
+  "omega_circle_start": 1.5,
+  "omega_circle_end": 3.5,
+  "omega_plane": 0.2,
+  "plane_axis": "x",
+  "duration": 30.0,
+  "sampling_frequency": 100.0,
+  "traj_type": "melon"
+}
