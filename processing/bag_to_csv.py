@@ -139,9 +139,9 @@ def bag_to_csv(experiment_name, run):
 
 
 def main():
-    experiment_name = 'square_20251017'
-    run = 1
-    bag_to_csv(experiment_name, run)
+    for run in [1, 2, 3, 4]:
+        experiment_name = 'chirp_20251017'
+        bag_to_csv(experiment_name, run)
 
 if __name__ == "__main__":
     main()
