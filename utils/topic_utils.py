@@ -88,11 +88,11 @@ def extract_motor_erpm(df, prefix=[]):
     return df
 
 
-def extract_motors(df, prefix=[]):
-    return pd.concat([
-        extract_motor_thrusts(df, prefix=prefix + ['thrust']),
-        extract_motor_erpm(df, prefix=prefix + ['erpm']),
-    ], axis=1)
+# def extract_motors(df, prefix=[]):
+#     return pd.concat([
+#         extract_motor_thrusts(df, prefix=prefix + ['thrust']),
+#         extract_motor_erpm(df, prefix=prefix + ['erpm']),
+#     ], axis=1)
 
 
 def extract_controls(df, prefix=[]):
