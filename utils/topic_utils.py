@@ -88,13 +88,6 @@ def extract_motor_erpm(df, prefix=[]):
     return df
 
 
-# def extract_motors(df, prefix=[]):
-#     return pd.concat([
-#         extract_motor_thrusts(df, prefix=prefix + ['thrust']),
-#         extract_motor_erpm(df, prefix=prefix + ['erpm']),
-#     ], axis=1)
-
-
 def extract_controls(df, prefix=[]):
     df = extract_cols(df, {'0': 'thrust', '1': 'torque_roll', '2': 'torque_pitch', '3': 'torch_yaw'}, prefix)
     df /= (2 ** 16 - 1)
@@ -146,7 +139,7 @@ def retime_wifi_topics(extract_dfs: dict, wifi_topics: dict) -> dict:
 
     for topic, (timestamp_topic, timestamp_field) in wifi_topics.items():
         data_df = extract_dfs[topic].copy()
-        metadata_df = extract_dfs[timestamp_topic]
+        metadata_df = extract_dfs[timestamp_topic][["t", timestamp_field]]
 
         # Filter out zero or invalid hardware timestamps
         valid_meta = metadata_df[metadata_df[timestamp_field] != 0].copy()
@@ -159,7 +152,8 @@ def retime_wifi_topics(extract_dfs: dict, wifi_topics: dict) -> dict:
             data_df.sort_values("t"),
             valid_meta.sort_values("t"),
             on="t",
-            direction="nearest"
+            direction="nearest",
+            suffixes=('_x', None)
         )
 
         # Replace ROS timestamp with hardware timestamp (µs → ms → s)
