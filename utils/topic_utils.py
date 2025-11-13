@@ -126,7 +126,7 @@ def extract_metadata(df, prefix=[]):
     return extract_cols(df, ['setpoint_priority', 'state_stm32_timestamp', 'setpoint_stm32_timestamp'], prefix)
 
 # # Time synchronization
-def retime_wifi_topics(extract_dfs: dict, wifi_topics: dict, metadata_topic: str) -> dict:
+def retime_wifi_topics(extract_dfs: dict, wifi_topics: dict) -> dict:
     """
     Retime Wi-Fi topics using hardware timestamps from image_metadata.
     ROS timestamps are unreliable due to variable network latency.
@@ -135,20 +135,18 @@ def retime_wifi_topics(extract_dfs: dict, wifi_topics: dict, metadata_topic: str
     ----------
     extract_dfs : dict[str, pd.DataFrame]
         Extracted topic DataFrames, each containing at least a 't' column (ROS time).
-    wifi_topics : dict[str, str]
-        Mapping from topic -> field name in metadata containing hardware timestamp.
-    metadata_topic : str
-        Topic key in extract_dfs containing image metadata.
+    wifi_topics : dict[str, tuple[str, str]]
+        Mapping from topic -> (timestamp topic, timestamp field) containing hardware timestamp.
 
     Returns
     -------
     dict[str, pd.DataFrame]
         Updated extract_dfs with retimed Wi-Fi topics.
     """
-    metadata_df = extract_dfs[metadata_topic]
 
-    for topic, timestamp_field in wifi_topics.items():
+    for topic, (timestamp_topic, timestamp_field) in wifi_topics.items():
         data_df = extract_dfs[topic].copy()
+        metadata_df = extract_dfs[timestamp_topic]
 
         # Filter out zero or invalid hardware timestamps
         valid_meta = metadata_df[metadata_df[timestamp_field] != 0].copy()

@@ -60,14 +60,13 @@ def bag_to_csv(experiment_name, run):
 
     #%%
     wifi_topics = {
-        '/cf/image_odom': 'state_stm32_timestamp',
-        '/cf/image_accel': 'state_stm32_timestamp',
-        '/cf/motors': 'state_stm32_timestamp',
-        '/cf/setpoint': 'setpoint_stm32_timestamp',
+        '/cf/image_odom': ('/cf/image_metadata', 'state_stm32_timestamp'),
+        '/cf/image_accel': ('/cf/image_metadata', 'state_stm32_timestamp'),
+        '/cf/motors': ('/cf/motors', 'stm32_timestamp'),
+        '/cf/setpoint': ('/cf/image_metadata', 'setpoint_stm32_timestamp'),
     }
-    metadata_topic = '/cf/image_metadata'
 
-    extract_dfs = retime_wifi_topics(extract_dfs, wifi_topics, metadata_topic)
+    extract_dfs = retime_wifi_topics(extract_dfs, wifi_topics)
     clock_delays = estimate_clock_delays(
         extract_dfs=extract_dfs,
         latency_ref_base='/poses',
