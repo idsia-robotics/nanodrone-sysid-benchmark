@@ -10,7 +10,7 @@ def setup_matplotlib():
         "font.family": "serif",
         "font.serif": ["Times New Roman"],
         "mathtext.fontset": "cm",   # Computer Modern math (LaTeX look)
-        "font.size": 10,            # matches cas-dc main text
+        "font.size": 11,            # matches cas-dc main text
         "axes.labelsize": 14,
         "axes.titlesize": 14,
         "xtick.labelsize": 11,

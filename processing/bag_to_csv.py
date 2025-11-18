@@ -139,8 +139,9 @@ def bag_to_csv(experiment_name, run):
 
 
 def main():
-    for run in [1, 2, 3, 4]:
-        experiment_name = 'chirp_20251017'
+    for run in [1, 2, 3]:
+        print(f'CURRENT RUN: {run}')
+        experiment_name = 'melon_20251017'
         bag_to_csv(experiment_name, run)
 
 if __name__ == "__main__":
