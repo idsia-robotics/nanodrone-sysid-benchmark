@@ -17,7 +17,7 @@ from identification.dataset import (
     QuadDataset,
     combine_concat_dataset,
 )
-from identification.losses import WeightedMSELoss
+from identification.losses import WeightedMSELoss, WeightedGeodesicLoss
 
 # ---------------------------------------------------------------------
 # === CLI arguments ===
@@ -42,7 +42,7 @@ print(f"🧠 Model name composed automatically: {model_name}")
 # ---------------------------------------------------------------------
 # === Config ===
 # ---------------------------------------------------------------------
-pretrained = True
+pretrained = False
 batch_size = 256
 lr_start = 1e-5
 lr_end = 1e-8
@@ -133,7 +133,7 @@ scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_mi
 
 # === Loss ===
 # criterion = nn.MSELoss()  # no scaling — model handles normalization
-criterion = WeightedMSELoss(lambda_=0.05)
+criterion = WeightedGeodesicLoss(lambda_=0.05) #WeightedMSELoss(lambda_=0.1)
 
 # === Training Loop ===
 best_val_loss = float("inf")

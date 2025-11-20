@@ -135,6 +135,16 @@ def combine_concat_dataset(concat_dataset, scale=False, fold="train", scaler_dir
         x_scaler_path = os.path.join(scaler_dir, "x_scaler.pkl")
         u_scaler_path = os.path.join(scaler_dir, "u_scaler.pkl")
 
+        # state = [p(0-2), v(3-5), r(6-8), omega(9-11)]
+        idx_scale    = np.array([0, 1, 2, 3, 4, 5, 9, 10, 11])  # p, v, omega
+        idx_no_scale = np.array([6, 7, 8])                      # rotation log
+
+        # We want final_xs to end up as (N, 12) no matter what
+        N_x  = final_xs.shape[0]
+        D_x  = final_xs.shape[-1]        # 12
+        N_xs = final_xs_seq.shape[0]
+        H_xs = final_xs_seq.shape[1]
+
         if fold == "train":
             from sklearn.preprocessing import StandardScaler
             import joblib
@@ -142,14 +152,20 @@ def combine_concat_dataset(concat_dataset, scale=False, fold="train", scaler_dir
             x_scaler = StandardScaler()
             u_scaler = StandardScaler()
 
-            # include both current and next states
-            x_flat = np.concatenate([
-                final_xs.reshape(-1, final_xs.shape[-1]).numpy(),
-                final_xs_seq.reshape(-1, final_xs_seq.shape[-1]).numpy()
-            ], axis=0)
-            u_flat = final_us_seq.reshape(-1, final_us_seq.shape[-1]).numpy()
+            # Flatten states: squeeze any middle dims into feature dim
+            xs_flat     = final_xs.reshape(-1, D_x).numpy()          # (N, 12) or (N*?, 12)
+            xs_seq_flat = final_xs_seq.reshape(-1, D_x).numpy()      # (N*H, 12)
 
-            x_scaler.fit(x_flat)
+            # Fit x_scaler only on non-rotation dims
+            x_scaler.fit(
+                np.concatenate([
+                    xs_flat[:, idx_scale],
+                    xs_seq_flat[:, idx_scale]
+                ], axis=0)
+            )
+
+            # Inputs: standard scaling
+            u_flat = final_us_seq.reshape(-1, final_us_seq.shape[-1]).numpy()
             u_scaler.fit(u_flat)
 
             joblib.dump(x_scaler, x_scaler_path)
@@ -159,19 +175,41 @@ def combine_concat_dataset(concat_dataset, scale=False, fold="train", scaler_dir
             x_scaler = joblib.load(x_scaler_path)
             u_scaler = joblib.load(u_scaler_path)
 
-        # Apply transformations
-        final_xs = torch.from_numpy(
-            x_scaler.transform(final_xs.reshape(-1, final_xs.shape[-1]).numpy())
-        ).float()
+        # ---- Apply transformations ----
+        # Flatten (and squeeze any singleton dims) to (N, 12) / (N*H, 12)
+        xs_flat     = final_xs.reshape(-1, D_x).numpy()
+        xs_seq_flat = final_xs_seq.reshape(-1, D_x).numpy()
+
+        xs_scaled     = xs_flat.copy()
+        xs_seq_scaled = xs_seq_flat.copy()
+
+        # Scale only p, v, omega
+        xs_scaled[:, idx_scale]     = x_scaler.transform(xs_flat[:, idx_scale])
+        xs_seq_scaled[:, idx_scale] = x_scaler.transform(xs_seq_flat[:, idx_scale])
+
+        # Keep rotations untouched
+        xs_scaled[:, idx_no_scale]     = xs_flat[:, idx_no_scale]
+        xs_seq_scaled[:, idx_no_scale] = xs_seq_flat[:, idx_no_scale]
+
+        # Restore shapes:
+        # final_xs -> (N_x, 12)
+        final_xs = torch.from_numpy(xs_scaled).float().reshape(N_x, D_x)
+
+        # final_xs_seq -> (N_xs, H_xs, 12)
+        final_xs_seq = torch.from_numpy(xs_seq_scaled).float().reshape(
+            N_xs, H_xs, D_x
+        )
+
+        # Inputs: scale normally and restore original shape
         final_us_seq = torch.from_numpy(
-            u_scaler.transform(final_us_seq.reshape(-1, final_us_seq.shape[-1]).numpy())
+            u_scaler.transform(
+                final_us_seq.reshape(-1, final_us_seq.shape[-1]).numpy()
+            )
         ).float().reshape_as(final_us_seq)
-        final_xs_seq = torch.from_numpy(
-            x_scaler.transform(final_xs_seq.reshape(-1, final_xs_seq.shape[-1]).numpy())
-        ).float().reshape_as(final_xs_seq)
     else:
         x_scaler = None
         u_scaler = None
+
 
     # Wrap into dataset
     class CombinedDataset(torch.utils.data.Dataset):

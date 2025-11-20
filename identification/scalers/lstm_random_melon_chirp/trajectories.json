@@ -1,0 +1,10 @@
+{
+    "train_trajs": [
+        "random",
+        "melon",
+        "chirp"
+    ],
+    "valid_trajs": [
+        "square"
+    ]
+}

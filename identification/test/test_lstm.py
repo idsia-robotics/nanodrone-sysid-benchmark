@@ -123,10 +123,36 @@ state_names = ["x", "y", "z", "vx", "vy", "vz", "rx", "ry", "rz", "wx", "wy", "w
 
 # ---------------------------------------------------------------------
 # === Denormalize ===
-# ---------------------------------------------------------------------
+# ---------------------------------------------------------------------1
+# --- Load scaler ---
 x_scaler = joblib.load(os.path.join(scaler_dir, "x_scaler.pkl"))
-preds = x_scaler.inverse_transform(preds.reshape(-1, preds.shape[-1])).reshape(preds.shape)
-trues = x_scaler.inverse_transform(trues.reshape(-1, trues.shape[-1])).reshape(trues.shape)
+
+# ---- index sets (same as training scaling) ----
+idx_scale    = np.array([0,1,2, 3,4,5, 9,10,11])
+idx_no_scale = np.array([6,7,8])   # rotations stay untouched
+
+# ---- Shapes ----
+B, H, D = preds.shape
+
+# ---- Flatten ----
+preds_flat = preds.reshape(-1, D)
+trues_flat = trues.reshape(-1, D)
+
+# ---- Copies ----
+preds_inv = preds_flat.copy()
+trues_inv = trues_flat.copy()
+
+# ---- Inverse-transform only selected dims ----
+preds_inv[:, idx_scale] = x_scaler.inverse_transform(preds_flat[:, idx_scale])
+trues_inv[:, idx_scale] = x_scaler.inverse_transform(trues_flat[:, idx_scale])
+
+# ---- Leave rotations untouched ----
+preds_inv[:, idx_no_scale] = preds_flat[:, idx_no_scale]
+trues_inv[:, idx_no_scale] = trues_flat[:, idx_no_scale]
+
+# ---- Reshape back to original (B, H, D) ----
+preds = preds_inv.reshape(B, H, D)
+trues = trues_inv.reshape(B, H, D)
 
 # =====================================================
 # --- Convert to DataFrame (similar to previous code) ---

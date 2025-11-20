@@ -17,7 +17,7 @@ from identification.dataset import (
     QuadDataset,
     combine_concat_dataset,
 )
-from identification.losses import WeightedMSELoss
+from identification.losses import WeightedMSELoss, WeightedGeodesicLoss
 
 # ---------------------------------------------------------------------
 # === CLI arguments ===
@@ -44,8 +44,8 @@ print(f"🧠 Model name composed automatically: {model_name}")
 # ---------------------------------------------------------------------
 pretrained = False
 batch_size = 256
-lr_start = 1e-5
-lr_end = 5e-6
+lr_start = 1e-4
+lr_end = 5e-7
 mode = "lstm"
 
 os.environ["CUDA_VISIBLE_DEVICES"] = device_str.split(":")[-1]
@@ -123,10 +123,10 @@ if pretrained and os.path.exists(model_path):
 else:
     print("🔧 Training from scratch")
 
-optimizer = optim.Adam(model.parameters(), lr=lr_start)#, weight_decay=5e-5)   # <-- L2 regularization
+optimizer = optim.Adam(model.parameters(), lr=lr_start, weight_decay=0)   # <-- L2 regularization
 scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=lr_end)
 # criterion = nn.MSELoss()
-criterion = WeightedMSELoss(lambda_=0.1)
+criterion = WeightedGeodesicLoss(lambda_=0.05) #WeightedMSELoss(lambda_=0.1)
 # ---------------------------------------------------------------------
 # === Training Loop ===
 # ---------------------------------------------------------------------

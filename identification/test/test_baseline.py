@@ -23,7 +23,7 @@ horizon = 50
 dt = 0.01
 model_name = 'baseline'
 
-test_trajs = ["melon"]
+test_trajs = ["square"]
 
 print(f"🧪 Test trajectories (auto-selected): {test_trajs}")
 

@@ -308,7 +308,7 @@ class QuadLSTM(BaseQuadModel):
         self.state_dim_x = state_dim_x
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
-        self.dropout = nn.Dropout(p=0.)
+        self.dropout = nn.Dropout(p=0.1)
         self.lstm = nn.LSTM(input_dim_u, hidden_dim, num_layers, batch_first=True)
         self.h0 = nn.Linear(state_dim_x, hidden_dim)
         self.c0 = nn.Linear(state_dim_x, hidden_dim)
