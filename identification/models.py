@@ -308,6 +308,7 @@ class QuadLSTM(BaseQuadModel):
         self.state_dim_x = state_dim_x
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
+        self.dropout = nn.Dropout(p=0.)
         self.lstm = nn.LSTM(input_dim_u, hidden_dim, num_layers, batch_first=True)
         self.h0 = nn.Linear(state_dim_x, hidden_dim)
         self.c0 = nn.Linear(state_dim_x, hidden_dim)
@@ -321,5 +322,6 @@ class QuadLSTM(BaseQuadModel):
         h0 = self.h0(x0).unsqueeze(0).repeat(self.lstm.num_layers, 1, 1)
         c0 = self.c0(x0).unsqueeze(0).repeat(self.lstm.num_layers, 1, 1)
         out, _ = self.lstm(u_seq, (h0, c0))
+        # out = self.dropout(out)
         dx = self.out(out)
         return x0.unsqueeze(1) + dx
