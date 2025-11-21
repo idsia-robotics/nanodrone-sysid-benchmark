@@ -6,25 +6,30 @@ import os, json, joblib
 from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
 
+from pytorch3d.transforms import (
+    quaternion_to_axis_angle,
+    axis_angle_to_quaternion,
+)
+
+def quat_xyzw_to_wxyz(q):
+    # (x,y,z,w) → (w,x,y,z)
+    return torch.cat([q[..., 3:], q[..., :3]], dim=-1)
+
+def quat_wxyz_to_xyzw(q):
+    # (w,x,y,z) → (x,y,z,w)
+    return torch.cat([q[..., 1:], q[..., :1]], dim=-1)
+
 # -----------------------------------------------
 # Quaternion → SO(3) log map
 # -----------------------------------------------
-def quat_to_so3_log(q, eps=1e-8):
-    # q = (...,4) with (x,y,z,w)
-    v = q[..., :3]
-    w = q[..., 3].unsqueeze(-1)
-
-    norm_v = torch.norm(v, dim=-1, keepdim=True)
-    theta = 2.0 * torch.atan2(norm_v, w)
-
-    # avoid division by zero
-    scale = torch.where(
-        norm_v > eps,
-        theta / (norm_v + eps),
-        2.0 * torch.ones_like(norm_v)
-    )
-
-    return scale * v
+def quat_to_so3_log(q_xyzw):
+    """
+    q_xyzw: (...,4) quaternion in (x,y,z,w)
+    returns rotation vector r in R^3
+    """
+    q_wxyz = quat_xyzw_to_wxyz(q_xyzw)
+    r = quaternion_to_axis_angle(q_wxyz)  # (...,3)
+    return r
 
 
 # -----------------------------------------------

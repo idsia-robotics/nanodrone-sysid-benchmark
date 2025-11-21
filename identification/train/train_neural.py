@@ -133,7 +133,7 @@ scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_mi
 
 # === Loss ===
 # criterion = nn.MSELoss()  # no scaling — model handles normalization
-criterion = WeightedGeodesicLoss(lambda_=0.05) #WeightedMSELoss(lambda_=0.1)
+criterion = WeightedGeodesicLoss(lambda_=0.02) #WeightedMSELoss(lambda_=0.1)
 
 # === Training Loop ===
 best_val_loss = float("inf")

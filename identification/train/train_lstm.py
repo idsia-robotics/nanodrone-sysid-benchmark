@@ -110,7 +110,7 @@ valid_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False)
 # ---------------------------------------------------------------------
 # === Model Setup ===
 # ---------------------------------------------------------------------
-model = QuadLSTM(hidden_dim=128, num_layers=1).to(device)
+model = QuadLSTM(hidden_dim=64, num_layers=1).to(device)
 print(f"🧠 Initialized QuadLSTM model ({mode}) on {device}")
 
 num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -126,7 +126,7 @@ else:
 optimizer = optim.Adam(model.parameters(), lr=lr_start, weight_decay=0)   # <-- L2 regularization
 scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=lr_end)
 # criterion = nn.MSELoss()
-criterion = WeightedGeodesicLoss(lambda_=0.05) #WeightedMSELoss(lambda_=0.1)
+criterion = WeightedGeodesicLoss(lambda_=0.02) #WeightedMSELoss(lambda_=0.1)
 # ---------------------------------------------------------------------
 # === Training Loop ===
 # ---------------------------------------------------------------------

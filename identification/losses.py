@@ -2,6 +2,7 @@ import math
 
 import torch
 import torch.nn as nn
+from pytorch3d.transforms import so3_exp_map, so3_log_map, so3_relative_angle
 
 class QuadStateMSELoss(nn.Module):
     def __init__(self, model):
@@ -166,7 +167,7 @@ class WeightedGeodesicLoss(nn.Module):
     state = [p (3), v (3), r_log (3), omega (3)]
     """
 
-    def __init__(self, lambda_=0.05, w_pos=1.0, w_vel=0.1, w_omega=100.0, w_rot=1000.0):
+    def __init__(self, lambda_=0.05, w_pos=1.0, w_vel=0.1, w_omega=10.0, w_rot=10.0):
         super().__init__()
         self.lambda_ = lambda_
         self.w_pos = w_pos
@@ -181,7 +182,7 @@ class WeightedGeodesicLoss(nn.Module):
 
         # --- Exponential weights over horizon ---
         weights = torch.exp(-self.lambda_ * torch.arange(N, device=pred.device))
-        weights = weights / weights.sum()            # (N,)
+        # weights = weights / weights.sum()            # (N,)
         W = weights.view(1, N, 1)                    # (1,N,1)
 
         # --- Split components ---
@@ -190,7 +191,7 @@ class WeightedGeodesicLoss(nn.Module):
 
         # --- Clamp rotation vectors to avoid crazy angles ---
         r_pred = clamp_rotvec(r_pred)
-        r_gt   = clamp_rotvec(r_gt)
+        # r_gt   = clamp_rotvec(r_gt)
 
         # --- MSE terms ---
         loss_p = ((p_pred - p_gt)**2 * W).mean()
@@ -198,11 +199,33 @@ class WeightedGeodesicLoss(nn.Module):
         loss_w = ((w_pred - w_gt)**2 * W).mean()
 
         # --- SO(3) geodesic rotation loss ---
-        R_pred = so3_exp(r_pred)            # (B,N,3,3)
-        R_gt   = so3_exp(r_gt)
-        R_err  = torch.matmul(R_pred.transpose(-1, -2), R_gt)
-        phi_err = so3_log(R_err)            # (B,N,3)
-        loss_R = ((phi_err**2) * W).mean()
+        # R_pred = so3_exp(r_pred)            # (B,N,3,3)
+        # R_gt   = so3_exp(r_gt)
+        # R_err  = torch.matmul(R_pred.transpose(-1, -2), R_gt)
+        # phi_err = so3_log(R_err)            # (B,N,3)
+        # loss_R = ((phi_err**2) * W).mean()
+        #
+        # Convert rotation vectors -> rotation matrices
+        # ------------------------------------------
+        # ROTATION LOSS (SO3, PyTorch3D)
+        # Must flatten to (B*N, 3)
+        # ------------------------------------------
+        # Flatten rotvecs: (B, N, 3) -> (B*N, 3)
+        r_pred_flat = r_pred.reshape(B * N, 3)
+        r_gt_flat = r_gt.reshape(B * N, 3)
+
+        # Compute rotation matrices: (B*N, 3, 3)
+        R_pred_flat = so3_exp_map(r_pred_flat)
+        R_gt_flat = so3_exp_map(r_gt_flat)
+
+        # Geodesic angle: (B*N,)
+        rot_err_flat = so3_relative_angle(R_pred_flat, R_gt_flat)
+
+        # Reshape back to (B, N)
+        rot_err = rot_err_flat.view(B, N)
+
+        # Weighted squared loss
+        loss_R = ((rot_err ** 2) * W.squeeze(-1)).mean()
 
         total = self.w_pos * loss_p + self.w_vel * loss_v + self.w_omega * loss_w + self.w_rot * loss_R
 
