@@ -9,6 +9,7 @@ import pandas as pd
 from tqdm import tqdm
 from torch.utils.data import DataLoader, ConcatDataset
 
+sys.path.append("../..")
 
 # ---------------------------------------------------------------------
 # === Imports ===
@@ -30,18 +31,18 @@ from identification.losses import WeightedMSELoss, WeightedGeodesicLoss
 parser = argparse.ArgumentParser(description="Train Residual Quadrotor Model")
 parser.add_argument("--train_trajs", type=str, default='["random", "square", "chirp"]')
 parser.add_argument("--device", type=str, default="cuda:0")
-parser.add_argument("--epochs", type=int, default=1000)
+parser.add_argument("--epochs", type=int, default=10000)
 parser.add_argument("--horizon", type=int, default=50)
 args = parser.parse_args()
 
 train_trajs = json.loads(args.train_trajs)
-valid_trajs = ["melon"]#train_trajs  # validation uses same trajs
+valid_trajs = train_trajs  # validation uses same trajs ["melon"]
 device_str = args.device
 epochs = args.epochs
 horizon = args.horizon
 
 # --- compose model name automatically ---
-model_name = f"phys+res" + "_".join(train_trajs)
+model_name = f"phys+res_v2_" + "_".join(train_trajs)
 print(f"🧠 Model name composed automatically: {model_name}")
 
 # ---------------------------------------------------------------------
@@ -125,7 +126,7 @@ phys_params = {
 
 
 phys_model = PhysQuadModel(phys_params, dt).to(device)
-neural_model = NeuralQuadModel(input_dim=4, hidden_dim=64, num_layers=3, dt=dt).to(device)
+neural_model = NeuralQuadModel(hidden_dim=64, num_layers=5, dt=dt).to(device)
 
 model = ResidualQuadModel(
     phys=phys_model,
@@ -153,8 +154,9 @@ else:
 # ---------------------------------------------------------------------
 optimizer = optim.Adam(model.parameters(), lr=lr_start)
 scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=lr_end)
-# criterion = WeightedMSELoss(lambda_=0.2)
-criterion = WeightedGeodesicLoss(lambda_=0.02) #WeightedMSELoss(lambda_=0.1)
+# criterion = WeightedGeodesicLoss(lambda_=0.02) #WeightedMSELoss(lambda_=0.1)
+criterion = WeightedMSELoss(lambda_=0.1)
+
 # ---------------------------------------------------------------------
 # === Training Loop ===
 # ---------------------------------------------------------------------

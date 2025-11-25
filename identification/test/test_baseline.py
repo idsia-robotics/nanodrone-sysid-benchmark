@@ -23,7 +23,7 @@ horizon = 50
 dt = 0.01
 model_name = 'baseline'
 
-test_trajs = ["square"]
+test_trajs = ["melon"]
 
 print(f"🧪 Test trajectories (auto-selected): {test_trajs}")
 
@@ -104,6 +104,35 @@ trues_plot = trues_seq
 # =====================================================
 out_dir = "../out/predictions/real/baseline_model_multistep"
 os.makedirs(out_dir, exist_ok=True)
-out_path = os.path.join(out_dir, "_".join(test_trajs) + "_multistep.parquet")
-df_pred.to_parquet(out_path, index=False)
+out_path = os.path.join(out_dir, "_".join(test_trajs) + "_multistep.csv")
+df_pred.to_csv(out_path, index=False)
 print(f"💾 Saved to {out_path}")
+
+import time
+
+def measure_baseline_latency(x0, horizon, warmup=20, iters=200):
+    # Warmup to stabilize GPU timing
+    for _ in range(warmup):
+        _ = x0.repeat(1, horizon, 1)
+
+    torch.cuda.synchronize()
+    start = time.time()
+
+    for _ in range(iters):
+        _ = x0.repeat(1, horizon, 1)
+
+    torch.cuda.synchronize()
+    end = time.time()
+
+    # Return latency per forward call (in ms)
+    return (end - start) / iters * 1000
+
+
+# ---------------------------------------------------
+# Prepare dummy input (shape must match your dataloader)
+# ---------------------------------------------------
+dummy_x0 = torch.randn(1, 12).to(device)
+
+T_inf = measure_baseline_latency(dummy_x0, horizon=50)
+
+print(f"Baseline inference time: {T_inf:.6f} ms/step")

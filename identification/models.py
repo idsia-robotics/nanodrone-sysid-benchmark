@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from thop import profile
 
 from pytorch3d.transforms import (
     quaternion_to_axis_angle,
@@ -155,7 +156,7 @@ class PhysQuadModel(BaseQuadModel):
 
             # --- rotational dynamics ---
             Jω = omega @ self.J.T
-            omega_dot = torch.linalg.solve(
+            omega_dot = 0.0*torch.linalg.solve(
                 self.J, (tau - torch.cross(omega, Jω, dim=-1)).unsqueeze(-1)
             ).squeeze(-1)
 
@@ -256,9 +257,9 @@ class NeuralQuadModel(BaseQuadModel):
             layers += [nn.Linear(dim if i == 0 else hidden_dim, hidden_dim), nn.ReLU()]
         self.mlp = nn.Sequential(*layers)
         self.out = nn.Linear(hidden_dim, state_dim)
-        # nn.init.zeros_(self.out.weight)
+        nn.init.zeros_(self.out.weight)
         # nn.init.normal_(self.out.weight, mean=0, std=1e-4)
-        nn.init.xavier_uniform_(self.out.weight)
+        # nn.init.xavier_uniform_(self.out.weight)
         nn.init.zeros_(self.out.bias)
 
     def one_step(self, x, u):
@@ -279,137 +280,88 @@ class ResidualQuadModel(BaseQuadModel):
         self.neural = neural
         self.eps = eps
 
-        # =============================
-        #   Build normalization tensors
-        # =============================
+        # Cache scaler stats as device tensors (avoid CPU<->GPU + sklearn at runtime)
         def _to_tensors(scaler):
-            mean = torch.as_tensor(getattr(scaler, "mean_", None),
-                                   dtype=torch.float32)
-            scale = torch.as_tensor(getattr(scaler, "scale_", None),
-                                    dtype=torch.float32)
+            mean = torch.as_tensor(getattr(scaler, "mean_", None), dtype=torch.float32)
+            scale = torch.as_tensor(getattr(scaler, "scale_", None), dtype=torch.float32)
             return mean, scale
 
         x_mean, x_scale = _to_tensors(x_scaler)
         u_mean, u_scale = _to_tensors(u_scaler)
 
-        # Register buffers (these follow the model to CUDA)
+        # register as buffers so they move with .to(device)
         self.register_buffer("x_mean", x_mean)
         self.register_buffer("x_scale", x_scale)
         self.register_buffer("u_mean", u_mean)
         self.register_buffer("u_scale", u_scale)
 
-        # =============================
-        #   Scaling rules for x
-        # =============================
-        # State: [pos(3), vel(3), so3_log(3), omega(3)]
-        # dims:   0-2      3-5      6-8         9-11
-        #
-        # - scale pos, vel, omega
-        # - DO NOT scale axis-angle (6,7,8)
-        #
-        idx_scale    = [0, 1, 2, 3, 4, 5, 9, 10, 11]
-        idx_no_scale = [6, 7, 8]
-
-        self.idx_scale    = torch.tensor(idx_scale, dtype=torch.long)
-        self.idx_no_scale = torch.tensor(idx_no_scale, dtype=torch.long)
-
-        # Patch mean/scale so that non-scaled dims behave correctly
-        # mean=0, scale=1  → identity transform
-        self.x_mean[self.idx_no_scale]  = 0.0
-        self.x_scale[self.idx_no_scale] = 1.0
-
-    # ---------------------------------------------------
-    # NORMALIZATION HELPERS  (fully tensor / device-safe)
-    # ---------------------------------------------------
+    # ---- safe (de)normalization on device ----
     def x_denorm(self, x_norm):
-        x_real = x_norm.clone()
-        # apply inverse normalization only on idx_scale
-        x_real[:, self.idx_scale] = (
-                x_norm[:, self.idx_scale] * self.x_scale + self.x_mean
-        )
-        # rotations remain untouched
-        return x_real
+        return x_norm * (self.x_scale) + self.x_mean
 
     def x_normed(self, x_real):
-        x_norm = x_real.clone()
-        # apply normalization only on idx_scale
-        x_norm[:, self.idx_scale] = (
-                (x_real[:, self.idx_scale] - self.x_mean) / self.x_scale
-        )
-        # rotations remain untouched
-        return x_norm
+        return (x_real - self.x_mean) / (self.x_scale)
 
     def u_denorm(self, u_norm):
-        """Control input always fully scaled."""
-        return u_norm * self.u_scale + self.u_mean
+        return u_norm * (self.u_scale) + self.u_mean
 
-    # ---------------------------------------------------
-    #               FULL ONE-STEP
-    # ---------------------------------------------------
     def one_step(self, x_norm, u_norm):
-        """
-        x_norm : (B,12) normalized
-        u_norm : (B,4) normalized motors
-        Returns x_next_norm: (B,12)
-        """
+        # 1) Denormalize to real space (no CPU hops)
+        x_real = self.x_denorm(x_norm)
+        u_mot = self.u_denorm(u_norm) # motors
 
-        # 1) Denormalize to real space (still axis-angle for orientation)
-        x_real = self.x_denorm(x_norm)       # (B,12)
-        u_real = self.u_denorm(u_norm)       # (B,4)
-
-        # 2) Physics prediction (real → real)
+        # 2) physics next state (real → then back to norm)
         with torch.no_grad():
-            x_phys_next_real = self.phys.one_step(x_real, u_real)  # (B,12)
-
-        # 3) Normalize the physics prediction
+            x_phys_next_real = self.phys.one_step(x_real, u_mot)  # (B,12)
         x_phys_next_norm = self.x_normed(x_phys_next_real)
 
-        # 4) Neural residual Δx_res_norm in normalized space
-        xu_norm = torch.cat([x_norm, u_norm], dim=-1)
-        dx_res_norm = self.neural.out(self.neural.mlp(xu_norm))   # (B,12)
+        # 3) NN predicts *residual step* Δx_res in normalized space
+        #    Use the neural head directly to get dx, not x+dx
+        xu = torch.cat([x_norm, u_norm], dim=-1)
+        dx_res_norm = self.neural.out(self.neural.mlp(xu))  # (B,12), zero-init -> starts at 0
 
-        # 5) Combine: physics + residual
+        # 4) combine on top of physics prediction (NOT on top of x_norm)
         x_next_norm = x_phys_next_norm + dx_res_norm
 
-        # 6) Numerical safety
+        # 5) numerical safety (optional)
         if not torch.all(torch.isfinite(x_next_norm)):
-            x_next_norm = x_phys_next_norm
+            x_next_norm = x_phys_next_norm  # drop residual if it goes NaN/Inf
 
         return x_next_norm
 
 # ============================================================
 # === 5. LSTM model
 # ============================================================
-class QuadLSTM(BaseQuadModel):
-    def __init__(self, input_dim_u=4, state_dim_x=12, hidden_dim=64, num_layers=2, dt=0.01):
-        super().__init__(dt)
-        self.input_dim_u = input_dim_u
-        self.state_dim_x = state_dim_x
-        self.hidden_dim = hidden_dim
-        self.num_layers = num_layers
-        self.dropout = nn.Dropout(p=0.1)
-        self.lstm = nn.LSTM(input_dim_u, hidden_dim, num_layers, batch_first=True)
-        self.h0 = nn.Sequential(
-            nn.Linear(state_dim_x, hidden_dim),
-            nn.Tanh()
-        )
-        self.c0 = nn.Sequential(
-            nn.Linear(state_dim_x, hidden_dim),
-            nn.Tanh()
-        )
-        self.out = nn.Linear(hidden_dim, state_dim_x)
-        nn.init.zeros_(self.out.weight)
-
-    def forward(self, x0, u_seq):
-        if u_seq.ndim == 2:
-            u_seq = u_seq.unsqueeze(1)
-        B = u_seq.size(0)
-        h0 = self.h0(x0).unsqueeze(0).repeat(self.lstm.num_layers, 1, 1)
-        c0 = self.c0(x0).unsqueeze(0).repeat(self.lstm.num_layers, 1, 1)
-        out, _ = self.lstm(u_seq, (h0, c0))
-        # out = self.dropout(out)
-        dx = self.out(out)
-        return x0.unsqueeze(1) + dx
+# class QuadLSTM(BaseQuadModel):
+#     def __init__(self, input_dim_u=4, state_dim_x=12, hidden_dim=64, num_layers=2, dt=0.01):
+#         super().__init__(dt)
+#         self.input_dim_u = input_dim_u
+#         self.state_dim_x = state_dim_x
+#         self.hidden_dim = hidden_dim
+#         self.num_layers = num_layers
+#         self.dropout = nn.Dropout(p=0.1)
+#         self.lstm = nn.LSTM(input_dim_u, hidden_dim, num_layers, batch_first=True)
+#         self.h0 = nn.Sequential(
+#             nn.Linear(state_dim_x, hidden_dim),
+#             nn.Tanh()
+#         )
+#         self.c0 = nn.Sequential(
+#             nn.Linear(state_dim_x, hidden_dim),
+#             nn.Tanh()
+#         )
+#         self.out = nn.Linear(hidden_dim, state_dim_x)
+#         nn.init.zeros_(self.out.weight)
+#
+#     def forward(self, x0, u_seq):
+#         if u_seq.ndim == 2:
+#             u_seq = u_seq.unsqueeze(1)
+#         B = u_seq.size(0)
+#         h0 = self.h0(x0).unsqueeze(0).repeat(self.lstm.num_layers, 1, 1)
+#         c0 = self.c0(x0).unsqueeze(0).repeat(self.lstm.num_layers, 1, 1)
+#         out, _ = self.lstm(u_seq, (h0, c0))
+#         # out = self.dropout(out)
+#         dx = self.out(out)
+#         return x0.unsqueeze(1) + dx
 
 
 
@@ -538,3 +490,108 @@ class QuadLSTM(BaseQuadModel):
 #
 #         x_pred_seq = torch.cat(preds, dim=1)  # (B,T,12)
 #         return x_pred_seq
+
+class QuadLSTM(nn.Module):
+    def __init__(self,
+                 input_dim_u=4,
+                 state_dim_x=12,
+                 hidden_dim=64,
+                 num_layers=2,
+                 dt=0.01):
+        super().__init__()
+
+        self.input_dim_u = input_dim_u
+        self.state_dim_x = state_dim_x
+        self.hidden_dim = hidden_dim
+        self.num_layers = num_layers
+        self.dt = dt
+
+        # Init LSTM state from x0
+        self.h0_net = nn.Sequential(
+            nn.Linear(state_dim_x, hidden_dim),
+            nn.Tanh(),
+        )
+        self.c0_net = nn.Sequential(
+            nn.Linear(state_dim_x, hidden_dim),
+            nn.Tanh(),
+        )
+
+        # LSTM over controls
+        self.lstm = nn.LSTM(
+            input_size=input_dim_u,
+            hidden_size=hidden_dim,
+            num_layers=num_layers,
+            batch_first=True,
+        )
+
+        self.post_ln = nn.LayerNorm(hidden_dim)
+
+        self.post_mlp = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+        )
+
+        # Δx prediction
+        self.out = nn.Linear(hidden_dim, state_dim_x)
+        nn.init.zeros_(self.out.weight)
+        nn.init.zeros_(self.out.bias)
+
+    def forward(self, x0, u_seq):
+
+        if u_seq.ndim == 2:
+            u_seq = u_seq.unsqueeze(1)
+
+        B, T, _ = u_seq.shape
+
+        # Initial LSTM hidden state
+        h0 = self.h0_net(x0).unsqueeze(0).repeat(self.num_layers, 1, 1)
+        c0 = self.c0_net(x0).unsqueeze(0).repeat(self.num_layers, 1, 1)
+
+        # LSTM full sequence
+        lstm_out, _ = self.lstm(u_seq, (h0, c0))  # (B,T,H)
+
+        # Process hidden state
+        lstm_out = self.post_ln(lstm_out)
+        h = self.post_mlp(lstm_out)
+
+        # Predict Δx_t for ALL steps
+        dx = self.out(h)      # (B,T,12)
+
+        # Compute cumulative sum: x_t = x0 + Σ_{i < t} dx_i
+        dx_cumsum = torch.cumsum(dx, dim=1)  # (B,T,12)
+
+        # Vectorized: add x0 to each timestep
+        x_pred = x0.unsqueeze(1) + dx_cumsum
+
+        return x_pred   # (B,T,12)
+
+
+def main():
+    model = QuadLSTM(hidden_dim=64, num_layers=1).eval()
+    phys_params = {
+        "g": 9.81,
+        "m": 0.045,
+        "J": torch.diag(torch.tensor([2.3951e-5, 2.3951e-5, 3.2347e-6])),
+        "thrust_to_weight": 2.0,
+        "max_torque": torch.tensor([1e-2, 1e-2, 3e-3]),
+    }
+
+    phys_model = PhysQuadModel(phys_params, 0.01)
+    neural_model = NeuralQuadModel(hidden_dim=64, num_layers=5, dt=0.01)
+
+    model = ResidualQuadModel(
+        phys=phys_model,
+        neural=neural_model
+    )
+
+    dummy_x0  = torch.randn(1, 12)
+    dummy_seq = torch.randn(1, 50, 4)
+
+    # If your model takes (x0, u_seq):
+    flops, params = profile(model, inputs=(dummy_x0, dummy_seq))
+
+    print(f"FLOPs: {flops/1e6:.2f}M")
+    print(f"Params: {params/1e3:.2f}k")
+
+if __name__ == "__main__":
+    main()

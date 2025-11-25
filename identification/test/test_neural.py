@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+
 import torch
 import numpy as np
 import pandas as pd
@@ -10,6 +11,7 @@ from matplotlib.ticker import FormatStrFormatter
 from statsmodels.tools.eval_measures import rmse
 from sklearn.metrics import mean_absolute_error, r2_score
 from torch.utils.data import ConcatDataset, DataLoader
+from torch.onnx import TrainingMode
 
 
 # ---------------------------------------------------------------------
@@ -130,35 +132,10 @@ trues = torch.cat(trues, dim=0).numpy()
 # ---------------------------------------------------------------------
 # === Denormalize ===
 # ---------------------------------------------------------------------
-# --- Load scaler ---
 x_scaler = joblib.load(os.path.join(scaler_dir, "x_scaler.pkl"))
+preds = x_scaler.inverse_transform(preds.reshape(-1, preds.shape[-1])).reshape(preds.shape)
+trues = x_scaler.inverse_transform(trues.reshape(-1, trues.shape[-1])).reshape(trues.shape)
 
-# ---- index sets (same as training scaling) ----
-idx_scale    = np.array([0,1,2, 3,4,5, 9,10,11])
-idx_no_scale = np.array([6,7,8])   # rotations stay untouched
-
-# ---- Shapes ----
-B, H, D = preds.shape
-
-# ---- Flatten ----
-preds_flat = preds.reshape(-1, D)
-trues_flat = trues.reshape(-1, D)
-
-# ---- Copies ----
-preds_inv = preds_flat.copy()
-trues_inv = trues_flat.copy()
-
-# ---- Inverse-transform only selected dims ----
-preds_inv[:, idx_scale] = x_scaler.inverse_transform(preds_flat[:, idx_scale])
-trues_inv[:, idx_scale] = x_scaler.inverse_transform(trues_flat[:, idx_scale])
-
-# ---- Leave rotations untouched ----
-preds_inv[:, idx_no_scale] = preds_flat[:, idx_no_scale]
-trues_inv[:, idx_no_scale] = trues_flat[:, idx_no_scale]
-
-# ---- Reshape back to original (B, H, D) ----
-preds = preds_inv.reshape(B, H, D)
-trues = trues_inv.reshape(B, H, D)
 
 state_names = ["x", "y", "z", "vx", "vy", "vz", "rx", "ry", "rz", "wx", "wy", "wz"]
 
@@ -194,8 +171,8 @@ print(f"✅ Baseline DataFrame shape: {df_pred.shape}")
 # =====================================================
 out_dir = f"../out/predictions/real/{model_name}_model_multistep"
 os.makedirs(out_dir, exist_ok=True)
-out_path = os.path.join(out_dir, "_".join(test_trajs) + "_multistep.parquet")
-df_pred.to_parquet(out_path, index=False)
+out_path = os.path.join(out_dir, "_".join(test_trajs) + "_multistep.csv")
+df_pred.to_csv(out_path, index=False)
 print(f"💾 Saved to {out_path}")
 
 # =====================================================
@@ -212,3 +189,130 @@ plt.grid(True, alpha=0.3)
 plt.legend()
 plt.tight_layout()
 plt.show()
+
+
+
+# ------------------------------------------------------
+# Dummy inputs for profiling
+# ------------------------------------------------------
+dummy_x0 = torch.randn(1, 12).to(device)
+dummy_seq = torch.randn(1, 50, 4).to(device)
+
+model = model.to(device).eval()
+
+# ------------------------------------------------------
+# 1) THOP MACs + Params
+# ------------------------------------------------------
+import time
+from thop import profile
+macs, params = profile(model, inputs=(dummy_x0, dummy_seq), verbose=False)
+
+print(f"MACs:   {macs / 1e6:.3f} M")
+print(f"Params: {params / 1e3:.1f} K")
+
+# ------------------------------------------------------
+# 2) True inference latency (ms per single forward)
+# ------------------------------------------------------
+def measure_latency(model, x0, u_seq, warmup=20, iters=200):
+    # warmup
+    for _ in range(warmup):
+        _ = model(x0, u_seq)
+
+    torch.cuda.synchronize()
+    start = time.time()
+
+    for _ in range(iters):
+        _ = model(x0, u_seq)
+
+    torch.cuda.synchronize()
+    end = time.time()
+
+    return (end - start) / iters * 1000  # ms
+
+T_inf = measure_latency(model, dummy_x0, dummy_seq)
+print(f"Inference time: {T_inf:.4f} ms/step")
+
+# ------------------------------------------------------
+# Optional: dump in dict format for your LaTeX table
+# ------------------------------------------------------
+metrics_entry = {
+    "MACs_M": macs / 1e6,
+    "Params_K": params / 1e3,
+    "T_inf_ms": T_inf,
+}
+print(metrics_entry)
+
+# =====================================================================
+# === OPTIONAL: EXPORT 1-STEP MODEL FOR PROFILING =====================
+# =====================================================================
+export_to_onnx = False           # <<< toggle here
+onnx_export_dir = f"../out/export/{model_name}_model_multistep"
+os.makedirs(onnx_export_dir, exist_ok=True)
+
+if export_to_onnx:
+    print("\n📦 Exporting Neural model (1-step) for ONNX profiling...")
+
+    # -------------------------------------------------
+    # 1. One-step wrapper (ONNX-friendly)
+    # -------------------------------------------------
+    class NeuralOneStep(torch.nn.Module):
+        def __init__(self, base):
+            super().__init__()
+            self.base = base
+
+        def forward(self, x0, u0):
+            """
+            x0: (B,12)
+            u0: (B,4)
+            returns x1: (B,12)
+            """
+            # Build fake horizon=1 sequence
+            u_seq = u0.unsqueeze(1)              # (B,1,4)
+
+            # NeuralQuadModel expects (B,H,4)
+            x_seq = self.base(x0, u_seq)         # → (B,1,12)
+
+            return x_seq[:, 0, :]                # return x₁
+
+    export_model = NeuralOneStep(model).to(device).eval()
+
+    # -------------------------------------------------
+    # 2. Dummy inputs
+    # -------------------------------------------------
+    dummy_x0 = torch.zeros(1, 12).to(device)
+    dummy_u0 = torch.zeros(1, 4).to(device)
+
+    # -------------------------------------------------
+    # 3. Save sample I/O (optional but useful)
+    # -------------------------------------------------
+    torch.save(
+        {"x0": dummy_x0.cpu(), "u0": dummy_u0.cpu()},
+        os.path.join(onnx_export_dir, "sample_io.pt")
+    )
+
+    # -------------------------------------------------
+    # 4. Export ONNX
+    # -------------------------------------------------
+    onnx_path = os.path.join(onnx_export_dir, f"{model_name}_1step.onnx")
+
+    try:
+        torch.onnx.export(
+            export_model,
+            (dummy_x0, dummy_u0),
+            onnx_path,
+            export_params=True,
+            opset_version=12,
+            do_constant_folding=True,
+            input_names=["x0", "u0"],
+            output_names=["x1"],
+            dynamic_axes={
+                "x0": {0: "batch"},
+                "u0": {0: "batch"},
+                "x1": {0: "batch"},
+            },
+            training=TrainingMode.EVAL  # avoid fusion to make profiling accurate
+        )
+        print(f"🟢 ONNX 1-step model exported → {onnx_path}")
+
+    except Exception as e:
+        print(f"❌ ONNX export failed: {e}")

@@ -12,6 +12,8 @@ from torch.utils.data import DataLoader, ConcatDataset
 # ---------------------------------------------------------------------
 # === Imports ===
 # ---------------------------------------------------------------------
+sys.path.append("../..")
+
 from identification.models import QuadLSTM
 from identification.dataset import (
     QuadDataset,
@@ -25,18 +27,18 @@ from identification.losses import WeightedMSELoss, WeightedGeodesicLoss
 parser = argparse.ArgumentParser(description="Train LSTM quadrotor model with custom trajectories")
 parser.add_argument("--train_trajs", type=str, default='["random", "square", "chirp"]')
 parser.add_argument("--device", type=str, default="cuda:0")
-parser.add_argument("--epochs", type=int, default=1000)
+parser.add_argument("--epochs", type=int, default=10000)
 parser.add_argument("--horizon", type=int, default=50)
 args = parser.parse_args()
 
 train_trajs = json.loads(args.train_trajs)
-valid_trajs = ["melon"]#train_trajs  # validation uses same trajs
+valid_trajs = train_trajs  # validation uses same trajs ["melon"]
 device_str = args.device
 epochs = args.epochs
 horizon = args.horizon
 
 # --- compose model name automatically ---
-model_name = f"lstm_" + "_".join(train_trajs)
+model_name = f"lstm_v2_" + "_".join(train_trajs)
 print(f"🧠 Model name composed automatically: {model_name}")
 
 # ---------------------------------------------------------------------
@@ -44,8 +46,8 @@ print(f"🧠 Model name composed automatically: {model_name}")
 # ---------------------------------------------------------------------
 pretrained = False
 batch_size = 256
-lr_start = 1e-4
-lr_end = 5e-7
+lr_start = 1e-5
+lr_end = 1e-8
 mode = "lstm"
 
 os.environ["CUDA_VISIBLE_DEVICES"] = device_str.split(":")[-1]
@@ -75,7 +77,6 @@ def load_split(trajs, base_dir, split):
             file_path = os.path.join(base_dir, file_name)
             try:
                 df = pd.read_csv(file_path)
-                df = df.rename(columns={"torch_yaw": "torque_yaw"})
                 ds = QuadDataset(df, horizon=horizon)
                 datasets.append(ds)
             except Exception as e:
@@ -126,7 +127,8 @@ else:
 optimizer = optim.Adam(model.parameters(), lr=lr_start, weight_decay=0)   # <-- L2 regularization
 scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=lr_end)
 # criterion = nn.MSELoss()
-criterion = WeightedGeodesicLoss(lambda_=0.02) #WeightedMSELoss(lambda_=0.1)
+# criterion = WeightedGeodesicLoss(lambda_=0.02)
+criterion = WeightedMSELoss(lambda_=0.1)
 # ---------------------------------------------------------------------
 # === Training Loop ===
 # ---------------------------------------------------------------------
