@@ -34,14 +34,16 @@ class BaseQuadModel(nn.Module):
         Handles both one-step (B,1,4) and multi-step (B,N,4) cases.
         Returns trajectory [B,N,state_dim].
         """
-        if u_seq.ndim == 2:  # (B,4)
-            u_seq = u_seq.unsqueeze(1)
-        if x0.ndim == 2:  # (B,state)
-            x = x0
-        else:
-            x = x0.squeeze(1)
+        # if u_seq.ndim == 2:  # (B,4)
+        #     u_seq = u_seq.unsqueeze(1)
+        # if x0.ndim == 2:  # (B,state)
+        #     x = x0
+        # else:
+        #     x = x0.squeeze(1)
+        x = x0
 
-        B, N, _ = u_seq.shape
+        # B, N, _ = u_seq.shape
+        B, N = 1, 1
         preds = []
         for t in range(N):
             u_t = u_seq[:, t, :]
@@ -149,16 +151,17 @@ class PhysQuadModel(BaseQuadModel):
             tau = tau_norm * self.max_torque  # (B,3)
 
             # --- translational dynamics ---
-            thrust_b = torch.zeros_like(vel)
-            thrust_b[:, 2] = T
+            zeros = torch.zeros_like(T)
+            thrust_b = torch.stack([zeros, zeros, T], dim=-1)
             thrust_w = self.quat_rotate(quat, thrust_b)
             acc = (thrust_w - self.m * self.gravity) / self.m
 
             # --- rotational dynamics ---
-            J_omega = omega @ self.J.T
-            omega_dot = 0.0*torch.linalg.solve(
-                self.J, (tau - torch.cross(omega, J_omega, dim=-1)).unsqueeze(-1)
-            ).squeeze(-1)
+            # J_omega = omega @ self.J.T
+            # omega_dot = torch.linalg.solve(
+            #     self.J, (tau - torch.cross(omega, J_omega, dim=-1)).unsqueeze(-1)
+            # ).squeeze(-1)
+            omega_dot = torch.zeros_like(omega)
 
             # --- quaternion derivative ---
             quat_dot = self.quat_derivative(quat, omega)
@@ -207,25 +210,27 @@ class PhysQuadModel(BaseQuadModel):
     # === Quaternion utilities ===
     # ======================================================
     @staticmethod
-    def quat_to_so3_log(q_xyzw):
-        """
-        q_xyzw: (...,4) quaternion in (x,y,z,w)
-        returns rotation vector r in R^3
-        """
-        q_wxyz = quat_xyzw_to_wxyz(q_xyzw)
-        r = quaternion_to_axis_angle(q_wxyz)  # (...,3)
-        return r
+    def quat_to_so3_log(q, eps=1e-6):
+        v = q[..., :3]
+        w = q[..., 3:]
+        norm_v = torch.linalg.norm(v, dim=-1, keepdim=True)
+        angle = 2 * torch.atan2(norm_v, w.clamp(min=-1.0 + eps, max=1.0 - eps))
+        small = norm_v < eps
+        log_q = angle / (norm_v + eps) * v
+        log_q = torch.where(small, 2.0 * v, log_q)
+        return log_q
 
 
     @staticmethod
     def so3_log_to_quat(r):
-        """
-        r: (...,3) rotation vector
-        returns quaternion q_xyzw in (x,y,z,w)
-        """
-        q_wxyz = axis_angle_to_quaternion(r)  # (...,4)
-        q_xyzw = quat_wxyz_to_xyzw(q_wxyz)
-        return q_xyzw
+        theta = torch.linalg.norm(r, dim=-1, keepdim=True)
+        small = theta < 1e-6
+        half = 0.5 * theta
+        v = torch.sin(half) / (theta + 1e-8) * r
+        w = torch.cos(half)
+        v = torch.where(small, 0.5 * r, v)
+        w = torch.where(small, torch.ones_like(w), w)
+        return torch.cat([v, w], dim=-1)
 
     @staticmethod
     def quat_rotate(q, v):
@@ -324,8 +329,8 @@ class ResidualQuadModel(BaseQuadModel):
         x_next_norm = x_phys_next_norm + dx_res_norm
 
         # 5) numerical safety (optional)
-        if not torch.all(torch.isfinite(x_next_norm)):
-            x_next_norm = x_phys_next_norm  # drop residual if it goes NaN/Inf
+        # if not torch.all(torch.isfinite(x_next_norm)):
+        #     x_next_norm = x_phys_next_norm  # drop residual if it goes NaN/Inf
 
         return x_next_norm
 
@@ -537,9 +542,8 @@ class QuadLSTM(nn.Module):
         nn.init.zeros_(self.out.bias)
 
     def forward(self, x0, u_seq):
-
-        if u_seq.ndim == 2:
-            u_seq = u_seq.unsqueeze(1)
+        # if u_seq.ndim == 2:
+            # u_seq = u_seq.unsqueeze(1)
 
         B, T, _ = u_seq.shape
 
@@ -558,12 +562,99 @@ class QuadLSTM(nn.Module):
         dx = self.out(h)      # (B,T,12)
 
         # Compute cumulative sum: x_t = x0 + Σ_{i < t} dx_i
-        dx_cumsum = torch.cumsum(dx, dim=1)  # (B,T,12)
+        # dx_cumsum = torch.cumsum(dx, dim=1)  # (B,T,12)
+        dx_cumsum = dx # Identity in one-step model
 
         # Vectorized: add x0 to each timestep
         x_pred = x0.unsqueeze(1) + dx_cumsum
 
         return x_pred   # (B,T,12)
+    
+    def make_init(self):
+        return self.Init(self.input_dim_u, self.state_dim_x, self.hidden_dim, self.num_layers, self.dt)
+
+    def make_loop(self):
+        return self.Loop(self.input_dim_u, self.state_dim_x, self.hidden_dim, self.num_layers, self.dt)
+
+    class Init(nn.Module):
+        def __init__(self, input_dim_u=4, state_dim_x=12, hidden_dim=64, num_layers=2, dt=0.01):
+            super().__init__()
+            self.num_layers = num_layers
+            self.h0_net = nn.Linear(state_dim_x, hidden_dim)
+            self.c0_net = nn.Linear(state_dim_x, hidden_dim)
+
+        def forward(self, x0):
+            h0 = self.h0_net(x0).unsqueeze(0).repeat(self.num_layers, 1, 1)
+            c0 = self.c0_net(x0).unsqueeze(0).repeat(self.num_layers, 1, 1)
+            return h0, c0
+    
+    class Loop(nn.Module):
+        def __init__(self, input_dim_u=4, state_dim_x=12, hidden_dim=64, num_layers=2, dt=0.01):
+            super().__init__()
+            
+            self.input_dim_u = input_dim_u
+            self.state_dim_x = state_dim_x
+            self.hidden_dim = hidden_dim
+            self.num_layers = num_layers
+            self.dt = dt
+
+            # Init LSTM state from x0
+            self.h0_net = nn.Sequential(
+                nn.Linear(state_dim_x, hidden_dim),
+                nn.Tanh(),
+            )
+            self.c0_net = nn.Sequential(
+                nn.Linear(state_dim_x, hidden_dim),
+                nn.Tanh(),
+            )
+
+            # LSTM over controls
+            self.lstm = nn.LSTM(
+                input_size=input_dim_u,
+                hidden_size=hidden_dim,
+                num_layers=num_layers,
+                batch_first=True,
+            )
+
+            self.post_ln = nn.LayerNorm(hidden_dim)
+
+            self.post_mlp = nn.Sequential(
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.ReLU(),
+            )
+
+            # Δx prediction
+            self.out = nn.Linear(hidden_dim, state_dim_x)
+            nn.init.zeros_(self.out.weight)
+            nn.init.zeros_(self.out.bias)
+
+            self.h0_dummy = torch.zeros((self.lstm.num_layers, 1, hidden_dim))
+            self.c0_dummy = torch.zeros((self.lstm.num_layers, 1, hidden_dim))
+
+        def forward(self, x0, u_seq):
+            if u_seq.ndim == 2:
+                u_seq = u_seq.unsqueeze(1)
+        
+            B, T, _ = u_seq.shape
+
+            # LSTM full sequence
+            lstm_out, _ = self.lstm(u_seq, (self.h0_dummy, self.c0_dummy))  # (B,T,H)
+
+            # Process hidden state
+            lstm_out = self.post_ln(lstm_out)
+            h = self.post_mlp(lstm_out)
+
+            # Predict Δx_t for ALL steps
+            dx = self.out(h)      # (B,T,12)
+
+            # Compute cumulative sum: x_t = x0 + Σ_{i < t} dx_i
+            # dx_cumsum = torch.cumsum(dx, dim=1)  # (B,T,12)
+            dx_cumsum = dx # Identity in one-step model
+
+            # Vectorized: add x0 to each timestep
+            x_pred = x0.unsqueeze(1) + dx_cumsum
+
+            return x_pred   # (B,T,12)
 
 
 def main():

@@ -1,0 +1,30 @@
+[project]
+authors = ["Elia Cereda <eliacereda@gmail.com>"]
+channels = ["robostack-humble", "conda-forge"]
+name = "crazyflie-base-skeleton"
+platforms = ["osx-arm64"]
+version = "0.1.0"
+
+[dependencies]
+python = ">=3.11,<3.12"
+
+pytorch = ">=2.8.0,<3"
+onnx = ">=1.19.1,<2"
+
+# Notebook
+jupyterlab = ">=4.4.1,<5"
+pandas = ">=2.2.3,<3"
+seaborn = ">=0.13.2,<0.14"
+ipympl = ">=0.9.7,<0.10"
+pytables = ">=3.10.2,<4"
+onnxscript = ">=0.5.6,<0.6"
+torchinfo = ">=1.8.0,<2"
+jax = ">=0.7.2,<0.8"
+scikit-learn = ">=1.7.2,<2"
+
+[pypi-options]
+extra-index-urls = ["https://miropsota.github.io/torch_packages_builder"]
+
+[pypi-dependencies]
+ultralytics-thop = ">=2.0.18, <3"
+pytorch3d = "*"
