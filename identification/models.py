@@ -78,14 +78,14 @@ class PhysQuadModel(BaseQuadModel):
 
     @torch.no_grad()
     def motor_to_phys(self, u_mot):
-        ω2 = u_mot ** 2
-        T = self.Kt * ω2.sum(dim=1)
-        τx = self.Kt * self.arm * ((ω2[:, 2] + ω2[:, 3]) - (ω2[:, 0] + ω2[:, 1]))
-        τy = self.Kt * self.arm * ((ω2[:, 1] + ω2[:, 2]) - (ω2[:, 0] + ω2[:, 3]))
-        τz = self.Kc * -((ω2[:, 0] + ω2[:, 2]) - (ω2[:, 1] + ω2[:, 3]))
+        omega2 = u_mot ** 2
+        T = self.Kt * omega2.sum(dim=1)
+        tau_x = self.Kt * self.arm * ((omega2[:, 2] + omega2[:, 3]) - (omega2[:, 0] + omega2[:, 1]))
+        tau_y = self.Kt * self.arm * ((omega2[:, 1] + omega2[:, 2]) - (omega2[:, 0] + omega2[:, 3]))
+        tau_z = self.Kc * ((omega2[:, 0] + omega2[:, 2]) - (omega2[:, 1] + omega2[:, 3]))
         T_norm = T / self.T_max
-        τ_norm = torch.stack([τx, τy, τz], dim=1) / self.max_torque  # (B,3)
-        return torch.cat([T_norm.unsqueeze(1), τ_norm], dim=1)  # (B,4)
+        tau_norm = torch.stack([tau_x, tau_y, tau_z], dim=1) / self.max_torque  # (B,3)
+        return torch.cat([T_norm.unsqueeze(1), tau_norm], dim=1)  # (B,4)
 
     def one_step(self, x, u_mot):
         """x: (B,12), u_mot: (B,4) rad/s"""
@@ -155,9 +155,9 @@ class PhysQuadModel(BaseQuadModel):
             acc = (thrust_w - self.m * self.gravity) / self.m
 
             # --- rotational dynamics ---
-            Jω = omega @ self.J.T
+            J_omega = omega @ self.J.T
             omega_dot = 0.0*torch.linalg.solve(
-                self.J, (tau - torch.cross(omega, Jω, dim=-1)).unsqueeze(-1)
+                self.J, (tau - torch.cross(omega, J_omega, dim=-1)).unsqueeze(-1)
             ).squeeze(-1)
 
             # --- quaternion derivative ---
