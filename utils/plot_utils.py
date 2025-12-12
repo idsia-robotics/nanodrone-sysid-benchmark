@@ -368,3 +368,233 @@ def plot_3d_traj(X_ref, traj_type):
     ax.set_box_aspect([1,1,1])
     ax.view_init(elev=30, azim=45)
     return fig
+
+
+def plot_multistate_predictions(h=50, N_start=0, N_end=None):
+    """
+    Create a 4x3 grid of time-series plots comparing true vs. predicted trajectories
+    (h-step ahead) for each state variable.
+    """
+
+    if N_end is None:
+        N_end = len(df_base) - h
+
+    # --- State order (12 total) ---
+    state_names = [
+        "x", "y", "z",
+        "roll", "pitch", "yaw",
+        "vx", "vy", "vz",
+        "wx", "wy", "wz"
+    ]
+
+    # --- Fancy axis labels ---
+    state_labels = [
+        [r"$x$ [m]", r"$y$ [m]", r"$z$ [m]"],
+        [r'$\varphi$ [rad]', r'$\theta$ [rad]', r'$\psi$ [rad]'],
+        [r"$v_x$ [m/s]", r"$v_y$ [m/s]", r"$v_z$ [m/s]"],
+        [r"$\omega_x$ [rad/s]", r"$\omega_y$ [rad/s]", r"$\omega_z$ [rad/s]"]
+    ]
+
+    # --- Figure setup ---
+    fig, axs = plt.subplots(4, 3, figsize=(12, 5), sharex=True, dpi=200)
+    t = df_base["t"].values
+
+    for r in range(4):
+        for c in range(3):
+            idx = r * 3 + c
+            if idx >= len(state_names):
+                continue
+
+            state = state_names[idx]
+            pred_col = f"{state}_pred_h{h}"
+            ax = axs[r, c]
+
+            # --- Smoothed signals ---
+            neur = df_neur[pred_col][N_start:N_end].rolling(20, min_periods=1, center=True).mean()
+            res  = df_res[pred_col][N_start:N_end].rolling(20, min_periods=1, center=True).mean()
+            lstm = df_lstm[pred_col][N_start:N_end].rolling(20, min_periods=1, center=True).mean()
+            base = df_base[pred_col][N_start:N_end].rolling(20, min_periods=1, center=True).mean()
+            phys = df_phys[pred_col][N_start:N_end].rolling(20, min_periods=1, center=True).mean()
+            true = df_base[state][N_start + h:N_end + h].rolling(20, min_periods=1, center=True).mean()
+
+            # --- Plot ---
+            ax.plot(t[N_start + h:N_end + h], base, '-', color='tab:red', label='Naïve', linewidth=2, alpha=0.2)
+            ax.plot(t[N_start + h:N_end + h], phys, '-', color='tab:blue', label='Physics', linewidth=1.2)
+            ax.plot(t[N_start + h:N_end + h], neur, '-', color='tab:orange', label='Residual', linewidth=1.2)
+            ax.plot(t[N_start + h:N_end + h], res, '-', color='tab:purple', label='Phys+Res', linewidth=1.2)
+            ax.plot(t[N_start + h:N_end + h], lstm, '-', color='tab:green', label='LSTM', linewidth=1.2)
+            ax.plot(t[N_start + h:N_end + h], true, 'k--', label='GT', linewidth=1.5)
+
+            # --- Aesthetics ---
+            ax.set_ylabel(state_labels[r][c], fontsize=14, labelpad=10)
+            ax.grid(True, alpha=0.3)
+
+            ax.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
+
+            # Light grey axis box (same as torque-y)
+            for spine in ax.spines.values():
+                spine.set_edgecolor("lightgray")
+
+            # make tick numbers bigger
+            ax.tick_params(labelsize=13, width=1.2, length=4)
+
+            if (r == 3) and (c == 1):
+                ax.set_xlabel("Time [s]", fontsize=14)
+
+    # --- Align y-labels properly ---
+    fig.align_ylabels(axs[:, 0])
+
+    # --- Shared legend (like 2nd figure) ---
+    handles, labels = [], []
+    for ax in axs.flat:
+        h, l = ax.get_legend_handles_labels()
+        for handle, label in zip(h, l):
+            if label not in labels:
+                handles.append(handle)
+                labels.append(label)
+
+    # fig.legend(handles, labels, loc='upper center', ncols=6,
+    #            bbox_to_anchor=(0.5, 1), fontsize=14, frameon=True)
+
+    labelx = -0.17  # axes coords
+
+    for ax in axs.flat:
+        ax.yaxis.set_label_coords(labelx, 0.5)
+
+    plt.subplots_adjust(top=0.86, bottom=0.12, hspace=0.25, wspace=0.3)
+
+    # Reorder legend so Baseline is FIRST
+    legend_order = ["GT", "Naïve", "Physics", "Residual", "Phys+Res", "LSTM"]
+    legend_handles = [handles[labels.index(m)] for m in legend_order]
+
+    fig.legend(
+    legend_handles, legend_order,
+    loc="upper center",
+    ncols=6,
+    bbox_to_anchor=(0.5, .99),
+    fontsize=14
+    )
+
+    plt.savefig('new_lineplots_models.pdf', bbox_inches='tight')
+    plt.show()
+
+def plot_multistate_boxplots(df_base, df_lstm, df_neur, df_res,
+                             h=50, N_start=0, N_end=None, max_outliers=None):
+    """
+    Create a 4x3 grid of boxplots showing absolute errors for each model and state.
+    Matches the aesthetic of plot_multistate_predictions.
+
+    Args:
+        df_base, df_lstm, df_neur, df_res : DataFrames
+            Containing columns like '<state>_pred_h<h>'.
+        h : int
+            Prediction horizon.
+        N_start, N_end : int
+            Index range for samples.
+        max_outliers : int or None
+            If set, limits the number of largest error samples kept (useful to reduce extreme tails).
+    """
+
+    if N_end is None:
+        N_end = len(df_base) - h
+
+    # --- State order (12 total) ---
+    state_names = [
+        "x", "y", "z",
+        "roll", "pitch", "yaw",
+        "vx", "vy", "vz",
+        "wx", "wy", "wz"
+    ]
+
+    # --- Fancy axis labels ---
+    state_labels = [
+        [r"$x$ [m]", r"$y$ [m]", r"$z$ [m]"],
+        [r'$\varphi$ [rad]', r'$\theta$ [rad]', r'$\psi$ [rad]'],
+        [r"$v_x$ [m/s]", r"$v_y$ [m/s]", r"$v_z$ [m/s]"],
+        [r"$\omega_x$ [rad/s]", r"$\omega_y$ [rad/s]", r"$\omega_z$ [rad/s]"]
+    ]
+
+    # --- Model colors ---
+    colors = {
+        "Naïve": "tab:red",
+        "Residual": "tab:purple",
+        "Neural": "tab:orange",
+        "LSTM": "tab:green",
+    }
+
+    fig, axs = plt.subplots(4, 3, figsize=(12, 6), dpi=100)
+    axs = axs.flatten()
+
+    for r in range(4):
+        for c in range(3):
+            idx = r * 3 + c
+            if idx >= len(state_names):
+                continue
+
+            state = state_names[idx]
+            pred_col = f"{state}_pred_h{h}"
+            ax = axs[idx]
+
+            # --- Compute absolute errors ---
+            true = df_base[state].values[N_start + h:N_end + h]
+            base = np.abs(df_base[pred_col].values[N_start:N_end] - true)
+            neur = np.abs(df_neur[pred_col].values[N_start:N_end] - true)
+            lstm = np.abs(df_lstm[pred_col].values[N_start:N_end] - true)
+            res  = np.abs(df_res[pred_col].values[N_start:N_end] - true)
+
+            # --- Optionally limit outliers ---
+            if max_outliers is not None:
+                def limit_outliers(arr, n=max_outliers):
+                    if len(arr) > n:
+                        cutoff = np.partition(arr, -n)[-n]  # nth largest
+                        arr = np.clip(arr, None, cutoff)
+                    return arr
+                base, neur, lstm, res = map(limit_outliers, [base, neur, lstm, res])
+
+            # --- Prepare data ---
+            data = [base, res, neur, lstm]
+            labels = list(colors.keys())
+
+            # --- Boxplot ---
+            box = ax.boxplot(data, patch_artist=True, labels=labels,
+                             widths=0.55,
+                             showfliers=False,
+                             medianprops=dict(color='black', linewidth=1.2),
+                             boxprops=dict(linewidth=1.1),
+                             whiskerprops=dict(linewidth=1.0),
+                             capprops=dict(linewidth=1.0),
+                             flierprops=dict(marker='.', markersize=2, alpha=0.4))
+
+            # --- Color boxes ---
+            for patch, key in zip(box['boxes'], colors.keys()):
+                patch.set_facecolor(colors[key])
+                patch.set_alpha(0.6)
+
+            # # --- Style ---
+            # ax.set_ylabel(state_labels[r][c], fontsize=14, labelpad=10)
+            # ax.grid(True, alpha=0.3)
+            # ax.tick_params(labelsize=13, width=1.2, length=4)
+            # ax.set_xticklabels(labels, rotation=20, fontsize=12)
+            # --- Style ---
+            ax.set_ylabel(state_labels[r][c], fontsize=14, labelpad=10)
+            ax.grid(True, alpha=0.3)
+            ax.tick_params(labelsize=13, width=1.2, length=4)
+
+            # REMOVE x labels
+            ax.set_xticks([])
+            ax.set_xlabel("")
+
+
+    # --- Shared legend ---
+    legend_elements = [
+        plt.Line2D([0], [0], color=c, lw=6, label=label, alpha=0.6)
+        for label, c in colors.items()
+    ]
+    fig.legend(handles=legend_elements, loc='upper center', ncols=4,
+               bbox_to_anchor=(0.5, .98), fontsize=14, frameon=True)
+    fig.align_ylabels()
+    plt.subplots_adjust(top=0.86, bottom=0.12, hspace=0.25, wspace=0.4)
+    plt.savefig('boxplots_models.pdf')
+    plt.show()
+
+

@@ -73,3 +73,45 @@ def quat_to_euler_torch(q: torch.Tensor) -> torch.Tensor:
     return torch.stack((roll, pitch, yaw), dim=-1)
 
 
+def quat_xyzw_to_wxyz(q):
+    # (x,y,z,w) → (w,x,y,z)
+    return torch.cat([q[..., 3:], q[..., :3]], dim=-1)
+
+def quat_wxyz_to_xyzw(q):
+    # (w,x,y,z) → (x,y,z,w)
+    return torch.cat([q[..., 1:], q[..., :1]], dim=-1)
+
+def quat_to_so3_log(q_xyzw):
+    """Torch: (x,y,z,w) → axis-angle r"""
+    q_wxyz = quat_xyzw_to_wxyz(q_xyzw)
+    r = quaternion_to_axis_angle(q_wxyz)
+    return r
+
+def so3_log_to_quat(r):
+    """Torch: axis-angle r → quaternion (x,y,z,w)"""
+    q_wxyz = axis_angle_to_quaternion(r)
+    q_xyzw = quat_wxyz_to_xyzw(q_wxyz)
+    return q_xyzw
+
+def so3_log_to_quat_np(r):
+    """
+    r: (N,3) rotation vectors
+    returns q_xyzw (N,4) = (x,y,z,w)
+    """
+    rot = R.from_rotvec(r)
+    q_wxyz = rot.as_quat()              # (x,y,z,w) ??? NO!
+    # scipy uses (x,y,z,w)
+    # but we want the same convention as the model: (x,y,z,w)
+    return q_wxyz  # already in (x,y,z,w)
+
+def quat_to_euler_np(q_xyzw):
+    """
+    q: (N,4) in (x,y,z,w)
+    Returns euler angles (N,3) in radians
+    """
+    # scipy expects (x,y,z,w), we're already using that
+    rot = R.from_quat(q_xyzw)
+    euler = rot.as_euler('xyz', degrees=False)
+    return euler
+
+
