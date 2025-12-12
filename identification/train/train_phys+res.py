@@ -36,7 +36,7 @@ parser.add_argument("--horizon", type=int, default=50)
 args = parser.parse_args()
 
 train_trajs = json.loads(args.train_trajs)
-valid_trajs = train_trajs  # validation uses same trajs ["melon"]
+valid_trajs = ["melon"]#train_trajs  # validation uses same trajs ["melon"]
 device_str = args.device
 epochs = args.epochs
 horizon = args.horizon
@@ -75,7 +75,7 @@ os.makedirs(scaler_dir, exist_ok=True)
 def load_split(trajs, base_dir, split):
     datasets = []
     for traj in trajs:
-        for run in [1, 2, 3, 4, 5]:
+        for run in [1, 2, 3, 4]:
             file_name = f"{traj}_20251017_run{run}.csv"
             file_path = os.path.join(base_dir, file_name)
             try:

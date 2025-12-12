@@ -30,7 +30,6 @@ class ScaledMSELoss(nn.Module):
         target_scaled = target / (scale + self.eps)
         return torch.mean((pred_scaled - target_scaled) ** 2)
 
-
 class WeightedMSELoss(nn.Module):
     """
     Exponentially weighted MSE loss for multi-step prediction.

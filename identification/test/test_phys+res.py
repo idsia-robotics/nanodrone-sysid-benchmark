@@ -80,7 +80,7 @@ print(f"🧪 Test trajectories (auto-selected): {test_trajs}")
 # ---------------------------------------------------------------------
 test_ds = []
 for traj in test_trajs:
-    for run in [1]:
+    for run in [1, 2, 3]:
         file_name = f"{traj}_20251017_run{run}.csv"
         file_path = os.path.join("../../data/real/processed/test", file_name)
         try:
