@@ -1,0 +1,12 @@
+jax
+jaxlib
+numpy
+pandas
+torch
+torchvision
+thop
+tqdm
+scikit-learn
+matplotlib
+joblib
+scipy
