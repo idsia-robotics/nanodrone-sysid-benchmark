@@ -1,2 +1,5 @@
 *.h5
 *.zip
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
