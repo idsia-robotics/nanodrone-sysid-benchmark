@@ -1,5 +1,26 @@
 # Nano-Quadrotor System Identification Benchmark
 
+<table>
+  <tr>
+    <td align="center">
+      <img src="media/square.jpg" width="220"><br>
+      <em>Square</em>
+    </td>
+    <td align="center">
+      <img src="media/random.jpg" width="220"><br>
+      <em>Random</em>
+    </td>
+    <td align="center">
+      <img src="media/melon.jpg" width="220"><br>
+      <em>Melon</em>
+    </td>
+    <td align="center">
+      <img src="media/chirp.jpg" width="220"><br>
+      <em>Chirp</em>
+    </td>
+  </tr>
+</table>
+
 This repository accompanies the paper:
 
 **“Nonlinear System Identification Nano-drone Benchmark”**  
@@ -34,9 +55,9 @@ The benchmark is built from **real flight experiments** conducted with a Crazyfl
 
 ### Inputs
 - Four motor angular velocities  
-  \[
+  $$
   \mathbf{u}_t = [\Omega_1, \Omega_2, \Omega_3, \Omega_4]
-  \]
+  $$
 
 ### Outputs
 - Position (world frame)
