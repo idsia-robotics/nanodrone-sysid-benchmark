@@ -6,29 +6,29 @@ This repository contains benchmarks and identification methods for quadrotor con
 
 Control engineering is evolving rapidly with the integration of machine learning algorithms. However, benchmarking and comparing these algorithms remains a challenge due to a lack of shared code and high-fidelity models. This project addresses this gap by providing:
 
-- A set of **challenging benchmark control applications**.
-- High-fidelity **simulation models** (JAX-based) and **identification models** (PyTorch-based).
-- **Reference implementations** for system identification using Physics-based, Neural, and Hybrid (Residual) approaches.
-- Tools for data processing and visualization.
+- **Reference implementations** for system identification using Physics-based, Neural, Hybrid (Residual), and LSTM approaches.
+- **Training and Testing scripts** to reproduce results.
+- **Data handling** utilities for quadrotor datasets.
+- Tools for visualization and comparison.
 
-The goal is to facilitate reproduction of results and enable fair comparisons between state-of-the-art control and identification methods.
+## Repository Structure (Main Branch)
 
-## Repository Structure
+The `main` branch focuses on the PyTorch-based identification models, training, and evaluation.
 
 ```
-├── simulator/          # JAX-based quadrotor dynamics simulator
-│   ├── quadrotor_sys.py
-│   └── check_jax_torch_quad_model_equivalence.py
-├── identification/     # PyTorch-based system identification models & training
-│   ├── models.py       # Model architectures (Phys, Neural, Residual, LSTM)
-│   ├── dataset.py      # Data loading and preprocessing
-│   ├── losses.py       # Custom loss functions
-│   └── train/          # Training scripts
-├── data/               # Directory for datasets (train/test split expected)
-├── processing/         # Data processing scripts (bag files to CSV, EDA)
-├── wheels/             # Custom built wheels (e.g., PyTorch3D)
-├── utils/              # Utility functions
-└── requirements.txt    # Python dependencies
+├── models/             # Model architectures (Phys, Neural, Hybrid, LSTM)
+├── dataset/            # Data loading (PyTorch Dataset)
+├── train/              # Training scripts
+├── test/               # Testing scripts
+├── results/            # Results analysis and notebooks
+├── data/               # Datasets
+├── out/                # Exported models and predictions
+├── scalers/            # Data scalers
+├── utils/              # Utility functions (plots, metrics, etc.)
+├── animations/         # Visualizations of flights
+├── figures/            # Generated plots
+├── requirements.txt    # Python dependencies
+└── README.md
 ```
 
 ## Installation
@@ -48,68 +48,60 @@ pip install -r requirements.txt
 
 ### Step 2: Install PyTorch3D
 
-This project uses `pytorch3d` for 3D transformations (quaternions, etc.). Installing it can sometimes be tricky depending on your OS and CUDA version.
+This project uses `pytorch3d` for 3D transformations (quaternions).
 
-**Option A: Use provided wheels (if applicable)**
-Check the `wheels/` directory or visit the [PyTorch3D Wheel Builder](https://miropsota.github.io/torch_packages_builder/pytorch3d/) to download the correct wheel for your system. Then install it:
+**Option A: Use provided wheels (in dev branch)**
+Wheels for some platforms might be available in the `dev` branch. You can check them out or download them.
 
-```bash
-pip install wheels/pytorch3d-*.whl
-# OR
-pip install <url_to_wheel>
-```
-
-**Option B: Build from source**
-Follow the official [PyTorch3D installation guide](https://github.com/facebookresearch/pytorch3d/blob/main/INSTALL.md).
+**Option B: Build from source / Download wheels**
+You can download wheels from the [PyTorch3D Wheel Builder](https://miropsota.github.io/torch_packages_builder/pytorch3d/) or follow the official [PyTorch3D installation guide](https://github.com/facebookresearch/pytorch3d/blob/main/INSTALL.md).
 
 ## Usage
 
-### 1. Data Preparation
+### 1. Training
 
-Raw data typically comes in ROS bag format. Use the scripts in `processing/` to convert them to CSV files suitable for training.
+The `train/` directory contains scripts to train different models.
 
+Example: Train an LSTM model
 ```bash
-# Example: Convert bag to CSV
-python processing/bag_to_csv.py
+python train/train_lstm.py --train_trajs '["random", "square", "chirp"]' --epochs 5000
 ```
 
-Processed data should be placed in `data/real/processed/train/` and `data/real/processed/test/`. The filename convention expected by training scripts is `{trajectory_type}_20251017_run{run_number}.csv`.
-
-### 2. System Identification (Training)
-
-The `identification/` module supports training various models to identify the quadrotor dynamics.
-
-To train an LSTM model on specific trajectories:
-
+Example: Train a Physics+Residual model
 ```bash
-python identification/train/train_lstm.py --train_trajs '["random", "square", "chirp"]' --epochs 5000
+python train/train_phys+res.py
 ```
 
-**Arguments:**
-- `--train_trajs`: JSON string list of trajectory types to use for training.
-- `--device`: Compute device (e.g., `cuda:0` or `cpu`).
-- `--epochs`: Number of training epochs.
-- `--horizon`: Prediction horizon for the model.
+### 2. Testing
 
-### 3. Simulation & Verification
+The `test/` directory contains scripts to evaluate trained models.
 
-The project includes a JAX-based high-fidelity simulator in `simulator/quadrotor_sys.py`.
+Example: Test LSTM model
+```bash
+python test/test_lstm.py
+```
 
-To verify the equivalence between the JAX simulator and the PyTorch identification models:
+### 3. Comparison & Results
+
+Use `results/model_comparison.py` or `results/model_comparison.ipynb` to compare different models and generate plots.
 
 ```bash
-python simulator/check_jax_torch_quad_model_equivalence.py
+python results/model_comparison.py
 ```
 
 ## Models Description
 
-The `identification/models.py` file contains implementations of several model types:
+`models/models.py` implements:
 
-1.  **`PhysQuadModel`**: A physics-based model using rigid body dynamics and RK4 integration. It uses `pytorch3d` for quaternion operations.
-2.  **`NeuralQuadModel`**: A purely data-driven MLP (Multi-Layer Perceptron) model that predicts state updates.
-3.  **`ResidualQuadModel`**: A hybrid model that combines `PhysQuadModel` as a baseline and uses a `NeuralQuadModel` to learn the residual dynamics (physics errors).
-4.  **`QuadLSTM`**: An LSTM-based model suitable for capturing temporal dependencies and memory effects in the dynamics.
+1.  **`PhysQuadModel`**: Physics-based model using rigid body dynamics and RK4 integration.
+2.  **`NeuralQuadModel`**: Purely data-driven MLP model.
+3.  **`ResidualQuadModel`**: Hybrid model (Physics + Neural Residual).
+4.  **`QuadLSTM`**: LSTM-based model for temporal dependencies.
 
-## Citation
+## EXTRA RESOURCES
 
-If you use this code in your research, please cite the accompanying paper (details to be added upon publication).
+Additional resources are available in the `.dev` branch (check out `origin/dev`), including:
+
+-   **`simulator/`**: A high-fidelity JAX-based quadrotor dynamics simulator.
+-   **`processing/`**: Scripts for processing raw ROS bag files into CSV/Parquet formats used by this repo.
+-   **`wheels/`**: Pre-built wheels for PyTorch3D (check if they match your system).
