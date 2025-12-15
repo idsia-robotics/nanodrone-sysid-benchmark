@@ -54,11 +54,9 @@ The benchmark focuses on **system identification and prediction**, not controlle
 The benchmark is built from **real flight experiments** conducted with a Crazyflie 2.1 Brushless nano-quadrotor in a motion-capture environment.
 
 ### Inputs
-- Four motor angular velocities  
-  $$
-  \mathbf{u}_t = [\Omega_1, \Omega_2, \Omega_3, \Omega_4]
-  $$
-
+- Four motor angular velocities
+  uₜ = [Ω₁, Ω₂, Ω₃, Ω₄]
+  
 ### Outputs
 - Position (world frame)
 - Linear velocity (world frame)
