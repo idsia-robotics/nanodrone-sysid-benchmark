@@ -1,6 +1,11 @@
-# Quadrotor Control Benchmark & Identification
+# Nonlinear System Identification Nano-drone Benchmark
 
-This repository contains benchmarks and identification methods for quadrotor control, serving as a support resource for our paper submitted to the **Special Issue on Machine Learning and Control Engineering**.
+This repository a benchmark for system identification based on \SI{75}{k} real-world samples from the \emph{Crazyflie~2.1 Brushless} nano-quadrotor, a sub-\SI{50}{\gram} aerial vehicle widely adopted in robotics research.
+The platform presents a challenging testbed due to its multi-input, multi-output nature, open-loop instability, and nonlinear dynamics under agile maneuvers.
+The dataset comprises four aggressive trajectories with synchronized \emph{4-dimensional motor inputs} and \emph{13-dimensional output measurements}.
+To enable fair comparison of identification methods, the benchmark includes a suite of \emph{multi-horizon prediction metrics} for evaluating both one-step and multi-step error propagation.
+In addition to the data, we provide a detailed description of the platform and experimental setup, as well as baseline models highlighting the challenge of accurate prediction under real-world noise and actuation nonlinearities.
+All data, scripts, and reference implementations are released as open-source at \url{https://github.com/idsia-robotics/nanodrone-sysid-benchmark} to facilitate transparent comparison of algorithms and support research on agile, miniaturized aerial robotics.
 
 ## Overview
 
