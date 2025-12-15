@@ -1,23 +1,62 @@
-# Nonlinear System Identification Nano-drone Benchmark
+# Nano-Quadrotor System Identification Benchmark
 
-This repository a benchmark for system identification based on \SI{75}{k} real-world samples from the \emph{Crazyflie~2.1 Brushless} nano-quadrotor, a sub-\SI{50}{\gram} aerial vehicle widely adopted in robotics research.
-The platform presents a challenging testbed due to its multi-input, multi-output nature, open-loop instability, and nonlinear dynamics under agile maneuvers.
-The dataset comprises four aggressive trajectories with synchronized \emph{4-dimensional motor inputs} and \emph{13-dimensional output measurements}.
-To enable fair comparison of identification methods, the benchmark includes a suite of \emph{multi-horizon prediction metrics} for evaluating both one-step and multi-step error propagation.
-In addition to the data, we provide a detailed description of the platform and experimental setup, as well as baseline models highlighting the challenge of accurate prediction under real-world noise and actuation nonlinearities.
-All data, scripts, and reference implementations are released as open-source at \url{https://github.com/idsia-robotics/nanodrone-sysid-benchmark} to facilitate transparent comparison of algorithms and support research on agile, miniaturized aerial robotics.
+This repository accompanies the paper:
+
+**“Nonlinear System Identification Nano-drone Benchmark”**  
+submitted to the *Special Issue on Machine Learning and Control Engineering*.
+
+It provides a **reproducible benchmark for nonlinear system identification** based on **real-world flight data** collected from a **Crazyflie 2.1 Brushless nano-quadrotor**, together with reference models, training scripts, and a standardized multi-step evaluation protocol.
+
+---
 
 ## Overview
 
-Control engineering is evolving rapidly with the integration of machine learning algorithms. However, benchmarking and comparing these algorithms remains a challenge due to a lack of shared code and high-fidelity models. This project addresses this gap by providing:
+Learning-based system identification methods are increasingly used in aerial robotics, yet fair comparison remains difficult due to the lack of shared datasets, unified evaluation protocols, and reference implementations—particularly for **nano-scale quadrotors** operating in aggressive regimes.
 
-- **Reference implementations** for system identification using Physics-based, Neural, Hybrid (Residual), and LSTM approaches.
-- **Training and Testing scripts** to reproduce results.
-- **Data handling** utilities for quadrotor datasets.
-- Tools for visualization and comparison.
+This repository addresses this gap by providing:
 
-## Repository Structure (Main Branch)
+- A **real-flight nano-drone dataset** (~75k samples) with synchronized motor inputs and full-state outputs.
+- **Reference identification models**, including:
+  - Physics-based models
+  - Purely data-driven neural models
+  - Hybrid Physics + Residual models
+  - Recurrent (LSTM-based) models
+- A **standardized multi-step prediction benchmark**, evaluating open-loop error propagation up to 0.5 s (50 steps at 100 Hz).
+- Complete **training, testing, and evaluation scripts** to reproduce the results reported in the paper.
 
+The benchmark focuses on **system identification and prediction**, not controller design.
+
+---
+
+## Dataset Summary
+
+The benchmark is built from **real flight experiments** conducted with a Crazyflie 2.1 Brushless nano-quadrotor in a motion-capture environment.
+
+### Inputs
+- Four motor angular velocities  
+  \[
+  \mathbf{u}_t = [\Omega_1, \Omega_2, \Omega_3, \Omega_4]
+  \]
+
+### Outputs
+- Position (world frame)
+- Linear velocity (world frame)
+- Orientation (quaternion, world frame)
+- Angular velocity (body frame)
+
+The resulting output vector has **13 dimensions**, consistent with the formulation in the paper.
+
+### Trajectories
+- `Square`
+- `Random`
+- `Melon`
+- `Chirp`
+
+Data from **Square**, **Random**, and **Chirp** trajectories are used for training, while **Melon** is reserved exclusively for testing, enforcing **trajectory-level generalization**.
+
+---
+
+## Repository Structure (main branch)
 The `main` branch focuses on the PyTorch-based identification models, training, and evaluation.
 
 ```
@@ -53,12 +92,9 @@ pip install -r requirements.txt
 
 ### Step 2: Install PyTorch3D
 
-This project uses `pytorch3d` for 3D transformations (quaternions).
+This project uses `pytorch3d` for 3D transformations (quaternions). If installation from requirements.txt, should file, try to build from sources:
 
-**Option A: Use provided wheels (in dev branch)**
-Wheels for some platforms might be available in the `dev` branch. You can check them out or download them.
-
-**Option B: Build from source / Download wheels**
+**Build from source / Download wheels**
 You can download wheels from the [PyTorch3D Wheel Builder](https://miropsota.github.io/torch_packages_builder/pytorch3d/) or follow the official [PyTorch3D installation guide](https://github.com/facebookresearch/pytorch3d/blob/main/INSTALL.md).
 
 ## Usage
@@ -69,7 +105,7 @@ The `train/` directory contains scripts to train different models.
 
 Example: Train an LSTM model
 ```bash
-python train/train_lstm.py --train_trajs '["random", "square", "chirp"]' --epochs 5000
+python train/train_lstm.py --train_trajs '["random", "square", "chirp"]' --epochs 500
 ```
 
 Example: Train a Physics+Residual model
@@ -79,7 +115,7 @@ python train/train_phys+res.py
 
 ### 2. Testing
 
-The `test/` directory contains scripts to evaluate trained models.
+The `test/` directory contains scripts to evaluate trained models over test trajectories. Predictions are saved in `results/`
 
 Example: Test LSTM model
 ```bash
