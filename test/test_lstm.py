@@ -157,7 +157,7 @@ print(f"✅ Baseline DataFrame shape: {df_pred.shape}")
 out_dir = f"../out/predictions/{model_name}_model_multistep/"
 os.makedirs(out_dir, exist_ok=True)
 out_path = os.path.join(out_dir, "_".join(test_trajs) + "_multistep.csv")
-# df_pred.to_csv(out_path, index=False)
+df_pred.to_csv(out_path, index=False)
 print(f"💾 Saved to {out_path}")
 
 # =====================================================

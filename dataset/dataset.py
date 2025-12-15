@@ -54,8 +54,8 @@ class QuadDataset(Dataset):
         pos = df[['x', 'y', 'z']].values
         vel = df[['vx', 'vy', 'vz']].values
         omega = df[['wx', 'wy', 'wz']].values
-
         quat = df[['qx', 'qy', 'qz', 'qw']].values
+
         if use_quaternions:
             rot_repr = quat
         else:
@@ -66,9 +66,7 @@ class QuadDataset(Dataset):
 
         # --- Inputs ---
         if inputs == 'motors':
-            m = df[['m1_erpm', 'm2_erpm', 'm3_erpm', 'm4_erpm']].values
-            # Convert ERPM → rad/s (assuming 6 electrical per mechanical revolution)
-            u = m * 2 * np.pi / (6 * 60)
+            u = df[['m1_rads', 'm2_rads', 'm3_rads', 'm4_rads']].values
         elif inputs == 'commands':
             u = df[['thrust', 'torque_roll', 'torque_pitch', 'torque_yaw']].values
         else:

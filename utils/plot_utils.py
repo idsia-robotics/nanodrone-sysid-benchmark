@@ -64,58 +64,72 @@ def plot_reference_trajectory(X_ref, title="Melon"):
     plt.tight_layout()
     plt.show()
 
-def animate_trajectory(X_m, X_ref, t_vec, traj_type, traj_id, dt, T_final,
-                       gif_fps=25, axis_len=0.3, save=True):
+def animate_trajectory(t_vec, X_m, traj_type, run, X_ref=None,
+                        gif_fps=25, axis_len=0.3, save=True):
     """
     Create a 3D animation of the quadrotor trajectory.
-
-    Args:
-        X_m: (N, state_dim) simulated states
-        X_ref: (N,3) reference positions
-        t_vec: time vector
-        traj_type: string, trajectory type
-        traj_id: string, unique id
-        dt: timestep [s]
-        T_final: total duration [s]
-        gif_fps: frames per second for gif export
-        axis_len: scale of body axes in 3D plot
-        save: if True, saves GIF file
     """
     from matplotlib.animation import FuncAnimation
     import matplotlib.pyplot as plt
     import numpy as np
 
-    stride = int(1 / (gif_fps * dt))  # how many sim steps per GIF frame
+    X_m = X_m.values
+    t_np = t_vec.values
+
+    dt = t_vec.diff().mean()
+    T_final = t_np[-1]
+    stride = max(1, int(1 / (gif_fps * dt)))  # safe stride
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
-    ax.set_xlim(-1, 1)
-    ax.set_ylim(-1, 1)
+    # Labels and title
+    ax.set_xlabel(r"$X$ [m]")
+    ax.set_ylabel(r"$Y$ [m]")
+    ax.zaxis.set_rotate_label(False)  # disable automatic rotation
+    ax.set_zlabel(r"$Z$ [m]", rotation=90)
+    # ax.set_title(title, fontsize=14, y=1.05)
+
+    # Equal aspect ratio
+    ax.set_xlim(-1.5, 1.5)
+    ax.set_ylim(-1.5, 1.5)
     ax.set_zlim(0, 2)
-    ax.set_xlabel("x [m]")
-    ax.set_ylabel("y [m]")
-    ax.set_zlabel("z [m]")
 
     # Draw full reference once
-    ax.plot(X_ref[:,0], X_ref[:,1], X_ref[:,2], "k--", label="reference")
+    if X_ref is not None:
+        ax.plot(X_ref[:,0], X_ref[:,1], X_ref[:,2], "k--", label="reference")
 
-    mel_line, = ax.plot([], [], [], "b-", label="Mellinger")
-    ax.legend()
+    mel_line, = ax.plot([], [], [], color='tab:blue', linewidth=1.8)
 
-    frames = range(0, len(t_vec), stride)
+    frames = range(0, len(t_np), stride)
 
-    # add three lines for the body axes
-    x_axis_line, = ax.plot([], [], [], "r-", lw=2)  # x-body (red)
-    y_axis_line, = ax.plot([], [], [], "g-", lw=2)  # y-body (green)
-    z_axis_line, = ax.plot([], [], [], "b-", lw=2)  # z-body (blue)
+    # Body axes
+    x_axis_line, = ax.plot([], [], [], "r-", lw=2)
+    y_axis_line, = ax.plot([], [], [], "g-", lw=2)
+    z_axis_line, = ax.plot([], [], [], "b-", lw=2)
+
+    # 🔑 Time text (fixed in screen coordinates)
+    time_text = ax.text2D(
+        0.02, 0.95, "",
+        transform=ax.transAxes,
+        fontsize=14,
+        verticalalignment="top"
+    )
+
+    if traj_type == "chirp":
+        ax.view_init(elev=15, azim=90)
+    else:
+        ax.view_init(elev=35, azim=45)
+
+    ax.grid(True, linestyle="--", linewidth=0.5)
 
     def update(frame_idx):
         mel_line.set_data(X_m[:frame_idx,0], X_m[:frame_idx,1])
         mel_line.set_3d_properties(X_m[:frame_idx,2])
 
-        # orientation from state quaternion
-        q = X_m[frame_idx, 6:10]  # [x, y, z, w]
+        # Orientation quaternion [x, y, z, w]
+        q = X_m[frame_idx, 3:7]
         x, y, z, w = q
+
         R = np.array([
             [1 - 2*(y*y + z*z),     2*(x*y - z*w),     2*(x*z + y*w)],
             [2*(x*y + z*w),     1 - 2*(x*x + z*z),     2*(y*z - x*w)],
@@ -124,7 +138,6 @@ def animate_trajectory(X_m, X_ref, t_vec, traj_type, traj_id, dt, T_final,
 
         p = X_m[frame_idx, 0:3]
 
-        # body axes in world frame
         xb = p + axis_len * R[:,0]
         yb = p + axis_len * R[:,1]
         zb = p + axis_len * R[:,2]
@@ -138,13 +151,22 @@ def animate_trajectory(X_m, X_ref, t_vec, traj_type, traj_id, dt, T_final,
         z_axis_line.set_data([p[0], zb[0]], [p[1], zb[1]])
         z_axis_line.set_3d_properties([p[2], zb[2]])
 
-        return mel_line, x_axis_line, y_axis_line, z_axis_line
+        # 🔑 Update time display
+        time_text.set_text(f"t = {t_np[frame_idx]:.2f} s")
+
+        return mel_line, x_axis_line, y_axis_line, z_axis_line, time_text
 
     ani = FuncAnimation(fig, update, frames=frames, blit=False)
-    if save:
-        ani.save(f"{traj_type}_{traj_id}.gif", writer="pillow", fps=gif_fps, dpi=100)
 
-    print(f"Saved animation: {traj_type}_{traj_id}.gif ({T_final:.2f} s duration, {gif_fps} fps)")
+    if save:
+        ani.save(
+            f"../animations/{traj_type}_run{run}.gif",
+            writer="pillow",
+            fps=gif_fps,
+            dpi=100
+        )
+
+    print(f"Saved animation: {traj_type}_run{run}.gif ({T_final:.2f} s duration)")
 
 def animate_sim_vs_real(df_sim, df_real, gif_filename=None, gif_fps=25, axis_len=0.2):
     """
@@ -261,17 +283,6 @@ def animate_sim_vs_real(df_sim, df_real, gif_filename=None, gif_fps=25, axis_len
 
     return ani
 
-# idsia_mpc/utils/plot_utils.py
-"""
-Plotting utilities for quadrotor trajectory simulation.
-Includes time-series plots, 3D trajectory visualization,
-and 3D animation export as GIF.
-"""
-
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
-
 
 def plot_positions(t_vec, X_ref, X_m, X_m_bis=None, N=None):
     """Plot position tracking x,y,z."""
@@ -298,7 +309,7 @@ def plot_velocities(t_vec, V_ref, X_m, X_m_bis=None, N=None):
     labels = ["vx [m/s]", "vy [m/s]", "vz [m/s]"]
     for i, ax in enumerate(axs):
         ax.plot(t_vec[:N], V_ref[:N, i], "k--", label="ref")
-        ax.plot(t_vec[:N], X_m[:N, 3+i], "b", label="Mellinger")
+        ax.plot(t_vec[:N], X_m[:N, 7+i], "b", label="Mellinger")
         if X_m_bis is not None:
             ax.plot(t_vec[:N], X_m_bis[:N, 3+i], "r", label="Repetition")
         ax.set_ylabel(labels[i]); ax.grid(True)
@@ -337,18 +348,20 @@ def plot_position_errors(t_vec, errors_m):
     return fig
 
 
-def plot_euler_angles(t_vec, Euler_ref, X_m, X_m_bis=None, N=None):
+def plot_euler_angles(t_vec, X_m, Euler_ref=None, X_m_bis=None, N=None):
     """Plot Euler angles roll, pitch, yaw."""
     if N is None:
         N = len(t_vec)
-    Euler_m = np.array([X_m[i, 6:10] for i in range(len(t_vec))])
+    if Euler_ref is not None:
+        Euler_m = np.array([X_m[i, 3:7] for i in range(len(t_vec))])
     if X_m_bis is not None:# quat
-        Euler_bis = np.array([X_m_bis[i, 6:10] for i in range(len(t_vec))])  # quat
+        Euler_bis = np.array([X_m_bis[i, 3:7] for i in range(len(t_vec))])  # quat
     # You’ll call quat_to_euler outside and pass arrays if preferred
     fig, axs = plt.subplots(3, 1, figsize=(8, 8), sharex=True)
     labels = ["roll [rad]", "pitch [rad]", "yaw [rad]"]
     for i, ax in enumerate(axs):
-        ax.plot(t_vec[:N], Euler_ref[:N, i], "k--", label="ref")
+        if Euler_ref is not None:
+            ax.plot(t_vec[:N], Euler_ref[:N, i], "k--", label="ref")
         ax.plot(t_vec[:N], Euler_m[:N, i], "b", label="Mellinger")
         if X_m_bis is not None:
             ax.plot(t_vec[:N], Euler_bis[:N, i], "r", label="Repetition")

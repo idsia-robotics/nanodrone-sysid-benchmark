@@ -25,7 +25,7 @@ from losses import WeightedMSELoss
 parser = argparse.ArgumentParser(description="Train LSTM quadrotor model with custom trajectories")
 parser.add_argument("--train_trajs", type=str, default='["random", "square", "chirp"]')
 parser.add_argument("--device", type=str, default="cuda:0")
-parser.add_argument("--epochs", type=int, default=10000)
+parser.add_argument("--epochs", type=int, default=500)
 parser.add_argument("--horizon", type=int, default=50)
 args = parser.parse_args()
 
