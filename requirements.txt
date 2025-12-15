@@ -10,3 +10,6 @@ scikit-learn
 matplotlib
 joblib
 scipy
+--extra-index-url https://miropsota.github.io/torch_packages_builder
+pytorch3d
+
