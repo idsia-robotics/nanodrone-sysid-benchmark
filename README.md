@@ -154,8 +154,8 @@ python results/model_comparison.py
 `models/models.py` implements:
 
 1.  **`PhysQuadModel`**: Physics-based model using rigid body dynamics and RK4 integration.
-2.  **`NeuralQuadModel`**: Purely data-driven MLP model.
-3.  **`ResidualQuadModel`**: Hybrid model (Physics + Neural Residual).
+2.  **`ResidualQuadModel`**: Purely data-driven MLP model.
+3.  **`PhysResQuadModel`**: Hybrid model (Physics + Neural Residual).
 4.  **`QuadLSTM`**: LSTM-based model for temporal dependencies.
 
 ## EXTRA RESOURCES
