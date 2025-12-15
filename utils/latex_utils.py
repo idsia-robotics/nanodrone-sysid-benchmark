@@ -1,3 +1,6 @@
+import numpy as np
+import pandas as pd
+
 # ============================================================
 # === Format for standard MAE columns
 # ============================================================
@@ -28,7 +31,7 @@ def italic_bold_best(col):
     return out
 
 
-def print_latex_table_results():
+def print_latex_table_results(rows, H_TARGETS):
     # ============================================================
     # === DataFrame structure (with the italic 1:50 columns)
     # ============================================================

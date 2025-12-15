@@ -1,3 +1,4 @@
+import sys
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,7 +8,6 @@ from pytorch3d.transforms import (
     quaternion_to_axis_angle,
     axis_angle_to_quaternion,
 )
-
 def quat_xyzw_to_wxyz(q):
     # (x,y,z,w) → (w,x,y,z)
     return torch.cat([q[..., 3:], q[..., :3]], dim=-1)
@@ -16,10 +16,10 @@ def quat_wxyz_to_xyzw(q):
     # (w,x,y,z) → (x,y,z,w)
     return torch.cat([q[..., 1:], q[..., :1]], dim=-1)
 
+
 # ============================================================
 # === Base class for all models (handles 1-step / multi-step)
 # ============================================================
-
 class BaseQuadModel(nn.Module):
     def __init__(self, dt=0.01):
         super().__init__()
@@ -48,7 +48,6 @@ class BaseQuadModel(nn.Module):
             x = self.one_step(x, u_t)
             preds.append(x.unsqueeze(1))
         return torch.cat(preds, dim=1)
-
 
 # ============================================================
 # === 1. Physics model
@@ -243,10 +242,9 @@ class PhysQuadModel(BaseQuadModel):
         return torch.cat([dqv, dqw], dim=-1)
 
 # ============================================================
-# === 3. Neural model
+# === 2. Residual model
 # ============================================================
-
-class NeuralQuadModel(BaseQuadModel):
+class ResidualQuadModel(BaseQuadModel):
     def __init__(self, state_dim=12, input_dim=4, hidden_dim=512, num_layers=4, dt=0.01):
         super().__init__(dt)
         layers = []
@@ -267,17 +265,15 @@ class NeuralQuadModel(BaseQuadModel):
         dx = self.out(self.mlp(xu))
         return x + dx
 
-
 # ============================================================
-# === 4. Residual model (Physics + NN correction)
+# === 3. Physics+Residual model (Physics + NN correction)
 # ============================================================
-
-class ResidualQuadModel(BaseQuadModel):
-    def __init__(self, phys: PhysQuadModel, neural: NeuralQuadModel,
+class PhysResQuadModel(BaseQuadModel):
+    def __init__(self, phys: PhysQuadModel, residual: ResidualQuadModel,
                  x_scaler, u_scaler, eps: float = 0):
         super().__init__(phys.dt)
         self.phys = phys
-        self.neural = neural
+        self.neural = residual
         self.eps = eps
 
         # Cache scaler stats as device tensors (avoid CPU<->GPU + sklearn at runtime)
@@ -316,7 +312,7 @@ class ResidualQuadModel(BaseQuadModel):
         x_phys_next_norm = self.x_normed(x_phys_next_real)
 
         # 3) NN predicts *residual step* Δx_res in normalized space
-        #    Use the neural head directly to get dx, not x+dx
+        #    Use the residual head directly to get dx, not x+dx
         xu = torch.cat([x_norm, u_norm], dim=-1)
         dx_res_norm = self.neural.out(self.neural.mlp(xu))  # (B,12), zero-init -> starts at 0
 
@@ -330,167 +326,8 @@ class ResidualQuadModel(BaseQuadModel):
         return x_next_norm
 
 # ============================================================
-# === 5. LSTM model
+# === 4. LSTM model
 # ============================================================
-# class QuadLSTM(BaseQuadModel):
-#     def __init__(self, input_dim_u=4, state_dim_x=12, hidden_dim=64, num_layers=2, dt=0.01):
-#         super().__init__(dt)
-#         self.input_dim_u = input_dim_u
-#         self.state_dim_x = state_dim_x
-#         self.hidden_dim = hidden_dim
-#         self.num_layers = num_layers
-#         self.dropout = nn.Dropout(p=0.1)
-#         self.lstm = nn.LSTM(input_dim_u, hidden_dim, num_layers, batch_first=True)
-#         self.h0 = nn.Sequential(
-#             nn.Linear(state_dim_x, hidden_dim),
-#             nn.Tanh()
-#         )
-#         self.c0 = nn.Sequential(
-#             nn.Linear(state_dim_x, hidden_dim),
-#             nn.Tanh()
-#         )
-#         self.out = nn.Linear(hidden_dim, state_dim_x)
-#         nn.init.zeros_(self.out.weight)
-#
-#     def forward(self, x0, u_seq):
-#         if u_seq.ndim == 2:
-#             u_seq = u_seq.unsqueeze(1)
-#         B = u_seq.size(0)
-#         h0 = self.h0(x0).unsqueeze(0).repeat(self.lstm.num_layers, 1, 1)
-#         c0 = self.c0(x0).unsqueeze(0).repeat(self.lstm.num_layers, 1, 1)
-#         out, _ = self.lstm(u_seq, (h0, c0))
-#         # out = self.dropout(out)
-#         dx = self.out(out)
-#         return x0.unsqueeze(1) + dx
-
-
-
-# class QuadLSTM(BaseQuadModel):
-#     def __init__(self,
-#                  input_dim_u=4,
-#                  state_dim_x=12,
-#                  hidden_dim=128,
-#                  num_layers=2,
-#                  dt=0.01):
-#         super().__init__(dt)
-#         self.input_dim_u = input_dim_u
-#         self.state_dim_x = state_dim_x
-#         self.hidden_dim = hidden_dim
-#         self.num_layers = num_layers
-#
-#         # ---------------------------------------
-#         # Structured nonlinear embedding of x0
-#         # x = [p(3), v(3), r_log(3), w(3)]
-#         # ---------------------------------------
-#         embed_dim = 8
-#
-#         self.embed_p = nn.Sequential(
-#             nn.Linear(3, embed_dim),
-#             nn.ReLU(),
-#         )
-#         self.embed_v = nn.Sequential(
-#             nn.Linear(3, embed_dim),
-#             nn.ReLU(),
-#         )
-#         self.embed_r = nn.Sequential(
-#             nn.Linear(3, embed_dim),
-#             nn.ReLU(),
-#         )
-#         self.embed_w = nn.Sequential(
-#             nn.Linear(3, embed_dim),
-#             nn.ReLU(),
-#         )
-#
-#         total_embed_dim = 4 * embed_dim
-#         self.h0_mlp = nn.Sequential(
-#             nn.Linear(total_embed_dim, hidden_dim),
-#             nn.Tanh(),
-#         )
-#         self.c0_mlp = nn.Sequential(
-#             nn.Linear(total_embed_dim, hidden_dim),
-#             nn.Tanh(),
-#         )
-#
-#         # ---------------------------------------
-#         # LSTM over concatenated [x_t, u_t]
-#         # ---------------------------------------
-#         lstm_input_dim = state_dim_x + input_dim_u
-#         self.lstm = nn.LSTM(
-#             input_size=lstm_input_dim,
-#             hidden_size=hidden_dim,
-#             num_layers=num_layers,
-#             batch_first=True,
-#         )
-#
-#         # Map hidden → delta state (residual)
-#         self.out = nn.Linear(hidden_dim, state_dim_x)
-#
-#         # Small init: near-identity but not dead
-#         # nn.init.uniform_(self.out.weight, -1e-4, 1e-4)
-#         nn.init.xavier_uniform_(self.out.weight)
-#         nn.init.zeros_(self.out.bias)
-#
-#     # ---- init hidden/cell from x0 ----
-#     def _init_states(self, x0):
-#         """
-#         x0: (B, 12) → h0, c0: (num_layers, B, hidden_dim)
-#         """
-#         p0 = x0[..., 0:3]
-#         v0 = x0[..., 3:6]
-#         r0 = x0[..., 6:9]
-#         w0 = x0[..., 9:12]
-#
-#         ep = self.embed_p(p0)
-#         ev = self.embed_v(v0)
-#         er = self.embed_r(r0)
-#         ew = self.embed_w(w0)
-#
-#         e = torch.cat([ep, ev, er, ew], dim=-1)  # (B, 4*embed_dim)
-#
-#         h0 = self.h0_mlp(e).unsqueeze(0).repeat(self.num_layers, 1, 1)
-#         c0 = self.c0_mlp(e).unsqueeze(0).repeat(self.num_layers, 1, 1)
-#         return h0, c0
-#
-#     def forward(self, x0, u_seq):
-#         """
-#         x0:    (B, 12)
-#         u_seq: (B, T, 4) or (B, T) or (T, 4)
-#
-#         returns:
-#             x_pred_seq: (B, T, 12)
-#         """
-#         # Ensure batch + time dims
-#         if u_seq.ndim == 2:
-#             # (T, 4) → (1, T, 4)
-#             u_seq = u_seq.unsqueeze(0)
-#         if u_seq.ndim != 3:
-#             raise ValueError(f"u_seq must be (B,T,4) or (T,4), got {u_seq.shape}")
-#
-#         B, T, _ = u_seq.shape
-#
-#         # Init LSTM hidden/cell from x0
-#         h, c = self._init_states(x0)
-#
-#         # Autoregressive rollout in physical state
-#         x_t = x0  # (B, 12)
-#         preds = []
-#
-#         for t in range(T):
-#             u_t = u_seq[:, t, :]              # (B, 4)
-#             lstm_in_t = torch.cat([x_t, u_t], dim=-1)  # (B, 12+4)
-#             lstm_in_t = lstm_in_t.unsqueeze(1)         # (B, 1, 16)
-#
-#             lstm_out_t, (h, c) = self.lstm(lstm_in_t, (h, c))  # (B,1,H)
-#             h_t = lstm_out_t[:, 0, :]                          # (B,H)
-#
-#             dx_t = self.out(h_t)          # (B,12)
-#             x_t = x_t + dx_t              # residual dynamics
-#
-#             preds.append(x_t.unsqueeze(1))
-#
-#         x_pred_seq = torch.cat(preds, dim=1)  # (B,T,12)
-#         return x_pred_seq
-
 class QuadLSTM(nn.Module):
     def __init__(self,
                  input_dim_u=4,
@@ -567,7 +404,6 @@ class QuadLSTM(nn.Module):
 
 
 def main():
-    model = QuadLSTM(hidden_dim=64, num_layers=1).eval()
     phys_params = {
         "g": 9.81,
         "m": 0.045,
@@ -577,11 +413,11 @@ def main():
     }
 
     phys_model = PhysQuadModel(phys_params, 0.01)
-    neural_model = NeuralQuadModel(hidden_dim=64, num_layers=5, dt=0.01)
+    residual_model = ResidualQuadModel(hidden_dim=64, num_layers=5, dt=0.01)
 
     model = ResidualQuadModel(
         phys=phys_model,
-        neural=neural_model
+        residual=residual_model
     )
 
     dummy_x0  = torch.randn(1, 12)

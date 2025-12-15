@@ -9,13 +9,12 @@ from torch.utils.data import ConcatDataset, DataLoader
 # ---------------------------------------------------------------------
 # === Imports from project ===
 # ---------------------------------------------------------------------
-from models.models import NeuralQuadModel, PhysQuadModel, ResidualQuadModel
+from models.models import PhysQuadModel, ResidualQuadModel, PhysResQuadModel
 from dataset.dataset import QuadDataset, combine_concat_dataset
 
 # ---------------------------------------------------------------------
 # === CONFIG ===
 # ---------------------------------------------------------------------
-ALL_TRAJS = ["random", "melon", "square", "chirp"]
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 batch_size = 128
 horizon = 50
@@ -24,7 +23,7 @@ dt = 0.01
 # ---------------------------------------------------------------------
 # === Locate trained model automatically ===
 # ---------------------------------------------------------------------
-model_root = "../out/models"
+model_root = "../out/models/"
 
 # find all available LSTM model files
 model_files = sorted(
@@ -107,10 +106,10 @@ ckpt = torch.load(model_path, map_location=device, weights_only=True)
 state = ckpt["model_state"] if isinstance(ckpt, dict) and "model_state" in ckpt else ckpt
 
 phys_model = PhysQuadModel(phys_params, dt).to(device)
-neural_model = NeuralQuadModel(**ckpt["config"]).to(device)
-model = ResidualQuadModel(
+res_model = ResidualQuadModel(**ckpt["config"]).to(device)
+model = PhysResQuadModel(
     phys=phys_model,
-    neural=neural_model,
+    residual=res_model,
     x_scaler=test_dataset.x_scaler,
     u_scaler=test_dataset.u_scaler
 ).to(device)
@@ -171,10 +170,10 @@ print(f"✅ Baseline DataFrame shape: {df_pred.shape}")
 # =====================================================
 # --- Save baseline results ---
 # =====================================================
-out_dir = f"../out/predictions/real/{model_name}_model_multistep"
+out_dir = f"../out/predictions/{model_name}_model_multistep/"
 os.makedirs(out_dir, exist_ok=True)
 out_path = os.path.join(out_dir, "_".join(test_trajs) + "_multistep.csv")
-df_pred.to_csv(out_path, index=False)
+# df_pred.to_csv(out_path, index=False)
 print(f"💾 Saved to {out_path}")
 
 # =====================================================
@@ -191,58 +190,3 @@ plt.grid(True, alpha=0.3)
 plt.legend()
 plt.tight_layout()
 plt.show()
-
-
-profile = False
-if profile:
-    import time
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    # ------------------------------------------------------
-    # Dummy inputs for profiling
-    # ------------------------------------------------------
-    dummy_x0 = torch.randn(1, 12).to(device)
-    dummy_seq = torch.randn(1, 50, 4).to(device)
-
-    model = model.to(device).eval()
-
-    # ------------------------------------------------------
-    # 1) THOP MACs + Params
-    # ------------------------------------------------------
-    macs, params = profile(model, inputs=(dummy_x0, dummy_seq), verbose=False)
-
-    print(f"MACs:   {macs / 1e6:.3f} M")
-    print(f"Params: {params / 1e3:.1f} K")
-
-    # ------------------------------------------------------
-    # 2) True inference latency (ms per single forward)
-    # ------------------------------------------------------
-    def measure_latency(model, x0, u_seq, warmup=20, iters=200):
-        # warmup
-        for _ in range(warmup):
-            _ = model(x0, u_seq)
-
-        torch.cuda.synchronize()
-        start = time.time()
-
-        for _ in range(iters):
-            _ = model(x0, u_seq)
-
-        torch.cuda.synchronize()
-        end = time.time()
-
-        return (end - start) / iters * 1000  # ms
-
-    T_inf = measure_latency(model, dummy_x0, dummy_seq)
-    print(f"Inference time: {T_inf:.4f} ms/step")
-
-    # ------------------------------------------------------
-    # Optional: dump in dict format for your LaTeX table
-    # ------------------------------------------------------
-    metrics_entry = {
-        "MACs_M": macs / 1e6,
-        "Params_K": params / 1e3,
-        "T_inf_ms": T_inf,
-    }
-    print(metrics_entry)

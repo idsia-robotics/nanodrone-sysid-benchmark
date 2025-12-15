@@ -64,9 +64,6 @@ class WeightedMSELoss(nn.Module):
         loss = ((pred - true) ** 2 * weights.view(1, N, 1)).mean()
         return loss
 
-import torch
-import torch.nn as nn
-
 # --------------------------------------------------
 # SO(3) exponential + logarithm maps
 # --------------------------------------------------
@@ -111,7 +108,6 @@ def so3_exp(phi, eps=1e-8):
 
     return R
 
-
 def so3_log(R, eps=1e-8):
     """
     Log map from rotation matrix to axis-angle.
@@ -149,7 +145,6 @@ def so3_log(R, eps=1e-8):
         phi[large] = scale * w[large]
 
     return phi
-
 
 # --------------------------------------------------
 # Weighted SO(3)-aware multi-step loss

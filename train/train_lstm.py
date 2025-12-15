@@ -26,18 +26,20 @@ from losses import WeightedMSELoss
 parser = argparse.ArgumentParser(description="Train LSTM quadrotor model with custom trajectories")
 parser.add_argument("--train_trajs", type=str, default='["random", "square", "chirp"]')
 parser.add_argument("--device", type=str, default="cuda:0")
-parser.add_argument("--epochs", type=int, default=10000)
+parser.add_argument("--epochs", type=int, default=500)
 parser.add_argument("--horizon", type=int, default=50)
 args = parser.parse_args()
 
 train_trajs = json.loads(args.train_trajs)
-valid_trajs = train_trajs  # validation uses same trajs ["melon"]
+valid_trajs = train_trajs  # validation uses same trajs
+train_runs = [1, 2, 3]
+valid_runs = [4]
 device_str = args.device
 epochs = args.epochs
 horizon = args.horizon
 
 # --- compose model name automatically ---
-model_name = f"lstm_v2_" + "_".join(train_trajs)
+model_name = f"lstm_" + "_".join(train_trajs)
 print(f"🧠 Model name composed automatically: {model_name}")
 
 # ---------------------------------------------------------------------
@@ -47,7 +49,6 @@ pretrained = False
 batch_size = 256
 lr_start = 1e-5
 lr_end = 1e-8
-mode = "lstm"
 
 os.environ["CUDA_VISIBLE_DEVICES"] = device_str.split(":")[-1]
 device = torch.device(device_str if torch.cuda.is_available() else "cpu")
@@ -55,23 +56,23 @@ device = torch.device(device_str if torch.cuda.is_available() else "cpu")
 # ---------------------------------------------------------------------
 # === Paths ===
 # ---------------------------------------------------------------------
-model_dir = f"../identification/out/models"
+model_dir = f"../out/models/"
 os.makedirs(model_dir, exist_ok=True)
 model_path = os.path.join(model_dir, f"{model_name}.pt")
 print(f"✅ Model will be saved to: {model_path}")
 
 scaler_dir = (
-    f"../scalers/{model_name}"
+    f"../scalers/{model_name}/"
 )
 os.makedirs(scaler_dir, exist_ok=True)
 
 # ---------------------------------------------------------------------
 # === Build Datasets ===
 # ---------------------------------------------------------------------
-def load_split(trajs, base_dir, split):
+def load_split(trajs, runs, base_dir, split):
     datasets = []
     for traj in trajs:
-        for run in [1, 2, 3, 4, 5]:
+        for run in runs:
             file_name = f"{traj}_20251017_run{run}.csv"
             file_path = os.path.join(base_dir, file_name)
             try:
@@ -84,8 +85,8 @@ def load_split(trajs, base_dir, split):
     return datasets
 
 
-train_ds = load_split(train_trajs, "../data/train/", "train")
-valid_ds = load_split(valid_trajs, "../data/test/", "valid")
+train_ds = load_split(train_trajs, train_runs, "../data/train/", "train")
+valid_ds = load_split(valid_trajs, valid_runs, "../data/train/", "valid")
 
 train_dataset = combine_concat_dataset(
     ConcatDataset(train_ds), scale=True, fold="train", scaler_dir=scaler_dir
@@ -111,7 +112,7 @@ valid_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False)
 # === Model Setup ===
 # ---------------------------------------------------------------------
 model = QuadLSTM(hidden_dim=64, num_layers=1).to(device)
-print(f"🧠 Initialized QuadLSTM model ({mode}) on {device}")
+print(f"🧠 Initialized QuadLSTM model on {device}")
 
 num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print(f"Total trainable parameters: {num_params:,}")
@@ -125,8 +126,6 @@ else:
 
 optimizer = optim.Adam(model.parameters(), lr=lr_start, weight_decay=0)   # <-- L2 regularization
 scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=lr_end)
-# criterion = nn.MSELoss()
-# criterion = WeightedGeodesicLoss(lambda_=0.02)
 criterion = WeightedMSELoss(lambda_=0.1)
 # ---------------------------------------------------------------------
 # === Training Loop ===

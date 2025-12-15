@@ -5,6 +5,8 @@
         "chirp"
     ],
     "valid_trajs": [
-        "melon"
+        "random",
+        "square",
+        "chirp"
     ]
 }

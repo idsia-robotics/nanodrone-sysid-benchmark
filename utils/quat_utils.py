@@ -6,6 +6,8 @@ Quaternion utilities.
 
 import numpy as np
 import torch
+from pytorch3d.transforms import quaternion_to_axis_angle, axis_angle_to_quaternion
+from scipy.spatial.transform import Rotation as R
 
 def quat_to_euler(q):
     """

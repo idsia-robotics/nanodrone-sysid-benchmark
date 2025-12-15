@@ -1,3 +1,4 @@
+import numpy as np
 
 # === Quaternion utilities ===
 def quat_conj(q):

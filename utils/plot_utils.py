@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
+from matplotlib.ticker import FormatStrFormatter
 
 def setup_matplotlib():
     import matplotlib.pyplot as plt
@@ -370,14 +371,13 @@ def plot_3d_traj(X_ref, traj_type):
     return fig
 
 
-def plot_multistate_predictions(h=50, N_start=0, N_end=None):
+def plot_multistate_predictions(dfs, h=50, N_start=0, N_end=None):
     """
     Create a 4x3 grid of time-series plots comparing true vs. predicted trajectories
     (h-step ahead) for each state variable.
     """
-
     if N_end is None:
-        N_end = len(df_base) - h
+        N_end = len(dfs["Naive"]) - h
 
     # --- State order (12 total) ---
     state_names = [
@@ -397,7 +397,7 @@ def plot_multistate_predictions(h=50, N_start=0, N_end=None):
 
     # --- Figure setup ---
     fig, axs = plt.subplots(4, 3, figsize=(12, 5), sharex=True, dpi=200)
-    t = df_base["t"].values
+    t = dfs["Naive"]["t"].values
 
     for r in range(4):
         for c in range(3):
@@ -410,12 +410,12 @@ def plot_multistate_predictions(h=50, N_start=0, N_end=None):
             ax = axs[r, c]
 
             # --- Smoothed signals ---
-            neur = df_neur[pred_col][N_start:N_end].rolling(20, min_periods=1, center=True).mean()
-            res  = df_res[pred_col][N_start:N_end].rolling(20, min_periods=1, center=True).mean()
-            lstm = df_lstm[pred_col][N_start:N_end].rolling(20, min_periods=1, center=True).mean()
-            base = df_base[pred_col][N_start:N_end].rolling(20, min_periods=1, center=True).mean()
-            phys = df_phys[pred_col][N_start:N_end].rolling(20, min_periods=1, center=True).mean()
-            true = df_base[state][N_start + h:N_end + h].rolling(20, min_periods=1, center=True).mean()
+            neur = dfs["Residual"][pred_col][N_start:N_end].rolling(20, min_periods=1, center=True).mean()
+            res  = dfs["Phys+Res"][pred_col][N_start:N_end].rolling(20, min_periods=1, center=True).mean()
+            lstm = dfs["LSTM"][pred_col][N_start:N_end].rolling(20, min_periods=1, center=True).mean()
+            base = dfs["Naive"][pred_col][N_start:N_end].rolling(20, min_periods=1, center=True).mean()
+            phys = dfs["Physics"][pred_col][N_start:N_end].rolling(20, min_periods=1, center=True).mean()
+            true = dfs["Naive"][state][N_start + h:N_end + h].rolling(20, min_periods=1, center=True).mean()
 
             # --- Plot ---
             ax.plot(t[N_start + h:N_end + h], base, '-', color='tab:red', label='Naïve', linewidth=2, alpha=0.2)
@@ -597,4 +597,82 @@ def plot_multistate_boxplots(df_base, df_lstm, df_neur, df_res,
     plt.savefig('boxplots_models.pdf')
     plt.show()
 
+
+def plot_metrics(model_metrics, save_fig=False):
+    # ============================================================
+    # === FIGURE: Position, Angular velocity, Orientation errors ==
+    # ============================================================
+
+    fig, axs = plt.subplots(1, 4, figsize=(12, 2), sharex=True)
+
+    metric_names = ["pos", "vel", "rot", "omega"]
+    ylabels = [
+        r"$\mathrm{MAE}_{e_p,h}$  [m]",
+        r"$\mathrm{MAE}_{e_v,h}$  [m/s]",
+        r"$\mathrm{MAE}_{e_R,h}$  [rad]",
+        r"$\mathrm{MAE}_{e_{\omega},h}$  [rad/s]"
+    ]
+
+    # Plotting order: Baseline LAST
+    plot_order = ["Physics", "Residual", "Phys+Res", "LSTM", "Naïve"]
+
+    model_styles = {
+        "Physics": ('-', 'tab:blue'),
+        "Residual": ('-', 'tab:orange'),
+        "Phys+Res": ('-', 'tab:purple'),
+        "LSTM": ('-', 'tab:green'),
+        "Naïve": ('--', 'tab:red'),
+    }
+
+    for i, metric in enumerate(metric_names):
+        ax = axs[i]
+        ax.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
+
+        # make tick numbers bigger
+        ax.tick_params(labelsize=13, width=1.2, length=4)
+
+        # <-- Add this line for .1f formatting
+        ax.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
+
+        # Light grey axis box (same as torque-y)
+        for spine in ax.spines.values():
+            spine.set_edgecolor("lightgray")
+
+        # Plot models in desired *drawing* order
+        for model_name in plot_order:
+            mm = model_metrics[model_name]
+            horizons = np.array(list(mm[metric].keys()))
+            values = np.array(list(mm[metric].values()))
+
+            ls, color = model_styles[model_name]
+            ax.plot(horizons, values, ls, color=color,
+                    linewidth=2, markersize=4, label=model_name)
+
+        ax.set_ylabel(ylabels[i], fontsize=12)
+        min_val = min(model_metrics["Naïve"][metric].values())
+        max_val = max(model_metrics["Naïve"][metric].values())
+        ax.set_ylim(min_val, max_val)
+        ax.set_xlabel("$h$  [-]", fontsize=14)
+        ax.grid(True, alpha=0.3)
+
+    # === Shared Legend ===
+    handles, labels = axs[0].get_legend_handles_labels()
+
+    # Reorder legend so Baseline is FIRST
+    legend_order = ["Naïve", "Physics", "Residual", "Phys+Res", "LSTM"]
+    legend_handles = [handles[labels.index(m)] for m in legend_order]
+
+    fig.legend(
+        legend_handles, legend_order,
+        loc="upper center",
+        ncols=5,
+        bbox_to_anchor=(0.5, 1.15),
+        fontsize=14
+    )
+
+    plt.subplots_adjust(top=0.86, bottom=0.12, hspace=0.25, wspace=0.4)
+    if save_fig:
+        plt.savefig("../figures/metrics_models.pdf", bbox_inches='tight')
+
+    plt.show()
 

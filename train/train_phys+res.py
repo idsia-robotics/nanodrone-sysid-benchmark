@@ -14,9 +14,9 @@ sys.path.append("..")
 # === Imports ===
 # ---------------------------------------------------------------------
 from models.models import (
-    NeuralQuadModel,
     PhysQuadModel,
-    ResidualQuadModel
+    ResidualQuadModel,
+    PhysResQuadModel
 )
 from dataset.dataset import (
     QuadDataset,
@@ -35,13 +35,15 @@ parser.add_argument("--horizon", type=int, default=50)
 args = parser.parse_args()
 
 train_trajs = json.loads(args.train_trajs)
-valid_trajs = ["melon"]#train_trajs  # validation uses same trajs ["melon"]
+valid_trajs = train_trajs  # validation uses same trajs
+train_runs = [1, 2, 3]
+valid_runs = [4]
 device_str = args.device
 epochs = args.epochs
 horizon = args.horizon
 
 # --- compose model name automatically ---
-model_name = f"phys+res_v2_" + "_".join(train_trajs)
+model_name = f"phys+res_" + "_".join(train_trajs)
 print(f"🧠 Model name composed automatically: {model_name}")
 
 # ---------------------------------------------------------------------
@@ -58,23 +60,23 @@ device = torch.device(device_str if torch.cuda.is_available() else "cpu")
 # ---------------------------------------------------------------------
 # === Paths ===
 # ---------------------------------------------------------------------
-model_dir = f"../identification/out/models"
+model_dir = f"../out/models/"
 os.makedirs(model_dir, exist_ok=True)
 model_path = os.path.join(model_dir, f"{model_name}.pt")
 print(f"✅ Model will be saved to: {model_path}")
 
 scaler_dir = (
-    f"../scalers/{model_name}"
+    f"../scalers/{model_name}/"
 )
 os.makedirs(scaler_dir, exist_ok=True)
 
 # ---------------------------------------------------------------------
 # === Build Datasets ===
 # ---------------------------------------------------------------------
-def load_split(trajs, base_dir, split):
+def load_split(trajs, runs, base_dir, split):
     datasets = []
     for traj in trajs:
-        for run in [1, 2, 3, 4]:
+        for run in runs:
             file_name = f"{traj}_20251017_run{run}.csv"
             file_path = os.path.join(base_dir, file_name)
             try:
@@ -87,8 +89,8 @@ def load_split(trajs, base_dir, split):
     return datasets
 
 
-train_ds = load_split(train_trajs, "../data/train", "train")
-valid_ds = load_split(valid_trajs, "../data/test", "valid")
+train_ds = load_split(train_trajs, train_runs, "../data/train", "train")
+valid_ds = load_split(valid_trajs, valid_runs, "../data/train", "valid")
 
 train_dataset = combine_concat_dataset(
     ConcatDataset(train_ds), scale=True, fold="train", scaler_dir=scaler_dir
@@ -125,11 +127,11 @@ phys_params = {
 
 
 phys_model = PhysQuadModel(phys_params, dt).to(device)
-neural_model = NeuralQuadModel(hidden_dim=64, num_layers=5, dt=dt).to(device)
+res_model = ResidualQuadModel(hidden_dim=64, num_layers=5, dt=dt).to(device)
 
-model = ResidualQuadModel(
+model = PhysResQuadModel(
     phys=phys_model,
-    neural=neural_model,
+    residual=res_model,
     x_scaler=train_dataset.x_scaler,
     u_scaler=train_dataset.u_scaler
 ).to(device)
@@ -153,7 +155,6 @@ else:
 # ---------------------------------------------------------------------
 optimizer = optim.Adam(model.parameters(), lr=lr_start)
 scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=lr_end)
-# criterion = WeightedGeodesicLoss(lambda_=0.02) #WeightedMSELoss(lambda_=0.1)
 criterion = WeightedMSELoss(lambda_=0.1)
 
 # ---------------------------------------------------------------------
@@ -198,15 +199,15 @@ for epoch in range(epochs):
             "model_state": model.state_dict(),
             "config": {
                 "dt": model.dt,
-                "hidden_dim": model.neural.hidden_dim,
-                "num_layers": model.neural.num_layers,
+                "hidden_dim": model.residual.hidden_dim,
+                "num_layers": model.residual.num_layers,
             },
             "optimizer_state": optimizer.state_dict(),
             "epoch": epoch,
             "train_loss": avg_train_loss,
             "val_loss": best_val_loss,
         }
-        torch.save(checkpoint, model_path)
+        # torch.save(checkpoint, model_path)
         print(f"💾 Saved best model at epoch {epoch+1} with valid loss {avg_valid_loss:.6f}")
 
     scheduler.step()

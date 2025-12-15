@@ -27,7 +27,7 @@ test_ds = []
 for traj in test_trajs:
     for run in [1, 2, 3]:
         file_name = f"{traj}_20251017_run{run}.csv"
-        file_path = os.path.join("../data/test", file_name)
+        file_path = os.path.join("../data/test/", file_name)
         try:
             df = pd.read_csv(file_path)
             ds = QuadDataset(df, horizon=horizon)
@@ -95,37 +95,8 @@ trues_plot = trues_seq
 # =====================================================
 # --- Save baseline results ---
 # =====================================================
-out_dir = "../identification/out/predictions/real/baseline_model_multistep"
+out_dir = "../out/predictions/baseline_model_multistep/"
 os.makedirs(out_dir, exist_ok=True)
 out_path = os.path.join(out_dir, "_".join(test_trajs) + "_multistep.csv")
-df_pred.to_csv(out_path, index=False)
+# df_pred.to_csv(out_path, index=False)
 print(f"💾 Saved to {out_path}")
-
-import time
-
-def measure_baseline_latency(x0, horizon, warmup=20, iters=200):
-    # Warmup to stabilize GPU timing
-    for _ in range(warmup):
-        _ = x0.repeat(1, horizon, 1)
-
-    torch.cuda.synchronize()
-    start = time.time()
-
-    for _ in range(iters):
-        _ = x0.repeat(1, horizon, 1)
-
-    torch.cuda.synchronize()
-    end = time.time()
-
-    # Return latency per forward call (in ms)
-    return (end - start) / iters * 1000
-
-
-# ---------------------------------------------------
-# Prepare dummy input (shape must match your dataloader)
-# ---------------------------------------------------
-dummy_x0 = torch.randn(1, 12).to(device)
-
-T_inf = measure_baseline_latency(dummy_x0, horizon=50)
-
-print(f"Baseline inference time: {T_inf:.6f} ms/step")

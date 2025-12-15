@@ -33,7 +33,7 @@ test_ds = []
 for traj in test_trajs:
     for run in [1, 2, 3]:
         file_name = f"{traj}_20251017_run{run}.csv"
-        file_path = os.path.join("../data/test", file_name)
+        file_path = os.path.join("../data/test/", file_name)
         try:
             df = pd.read_csv(file_path)
             ds = QuadDataset(df, horizon=horizon)
@@ -107,7 +107,7 @@ print(f"✅ Baseline DataFrame shape: {df_pred.shape}")
 # =====================================================
 # --- Save baseline results ---
 # =====================================================
-out_dir = f"../out/predictions/real/{model_name}_model_multistep"
+out_dir = f"../out/predictions/{model_name}_model_multistep/"
 os.makedirs(out_dir, exist_ok=True)
 out_path = os.path.join(out_dir, "_".join(test_trajs) + "_multistep.csv")
 df_pred.to_csv(out_path, index=False)
@@ -127,53 +127,3 @@ plt.grid(True, alpha=0.3)
 plt.legend()
 plt.tight_layout()
 plt.show()
-
-# ------------------------------------------------------
-# Dummy inputs for profiling
-# ------------------------------------------------------
-dummy_x0 = torch.randn(1, 12).to(device)
-dummy_seq = torch.randn(1, 50, 4).to(device)
-
-model = model.to(device).eval()
-
-# ------------------------------------------------------
-# 1) THOP MACs + Params
-# ------------------------------------------------------
-import time
-from thop import profile
-macs, params = profile(model, inputs=(dummy_x0, dummy_seq), verbose=False)
-
-print(f"MACs:   {macs / 1e6:.3f} M")
-print(f"Params: {params / 1e3:.1f} K")
-
-# ------------------------------------------------------
-# 2) True inference latency (ms per single forward)
-# ------------------------------------------------------
-def measure_latency(model, x0, u_seq, warmup=20, iters=200):
-    # warmup
-    for _ in range(warmup):
-        _ = model(x0, u_seq)
-
-    torch.cuda.synchronize()
-    start = time.time()
-
-    for _ in range(iters):
-        _ = model(x0, u_seq)
-
-    torch.cuda.synchronize()
-    end = time.time()
-
-    return (end - start) / iters * 1000  # ms
-
-T_inf = measure_latency(model, dummy_x0, dummy_seq)
-print(f"Inference time: {T_inf:.4f} ms/step")
-
-# ------------------------------------------------------
-# Optional: dump in dict format for your LaTeX table
-# ------------------------------------------------------
-metrics_entry = {
-    "MACs_M": macs / 1e6,
-    "Params_K": params / 1e3,
-    "T_inf_ms": T_inf,
-}
-print(metrics_entry)

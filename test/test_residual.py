@@ -1,6 +1,5 @@
 import os
 import json
-
 import torch
 import numpy as np
 import pandas as pd
@@ -13,7 +12,7 @@ from torch.onnx import TrainingMode
 # ---------------------------------------------------------------------
 # === Imports from project ===
 # ---------------------------------------------------------------------
-from models.models import NeuralQuadModel
+from models.models import ResidualQuadModel
 from dataset.dataset import QuadDataset, combine_concat_dataset
 
 # ---------------------------------------------------------------------
@@ -31,13 +30,13 @@ model_root = "../out/models"
 
 # find all available LSTM model files
 model_files = sorted(
-    [f for f in os.listdir(model_root) if f.startswith("neural") and f.endswith(".pt")],
+    [f for f in os.listdir(model_root) if f.startswith("residual") and f.endswith(".pt")],
     key=lambda x: os.path.getmtime(os.path.join(model_root, x)),
     reverse=True,
 )
 
 if not model_files:
-    raise RuntimeError("❌ No trained model found in ../out/new/models/")
+    raise RuntimeError("❌ No trained model found in ../out/models/")
 
 print("\n📂 Available trained models:")
 for idx, name in enumerate(model_files, start=1):
@@ -106,7 +105,7 @@ print(f"📦 Loaded {len(test_ds)} test datasets")
 # ---------------------------------------------------------------------
 ckpt = torch.load(model_path, map_location=device)
 cfg = ckpt["config"]
-model = NeuralQuadModel(**cfg).to(device)
+model = ResidualQuadModel(**cfg).to(device)
 model.load_state_dict(ckpt["model_state"])
 model.eval()
 print(f"✅ Model loaded from {model_path}")
@@ -165,10 +164,10 @@ print(f"✅ Baseline DataFrame shape: {df_pred.shape}")
 # =====================================================
 # --- Save baseline results ---
 # =====================================================
-out_dir = f"../out/predictions/real/{model_name}_model_multistep"
+out_dir = f"../out/predictions/{model_name}_model_multistep/"
 os.makedirs(out_dir, exist_ok=True)
 out_path = os.path.join(out_dir, "_".join(test_trajs) + "_multistep.csv")
-df_pred.to_csv(out_path, index=False)
+# df_pred.to_csv(out_path, index=False)
 print(f"💾 Saved to {out_path}")
 
 # =====================================================
@@ -186,57 +185,6 @@ plt.legend()
 plt.tight_layout()
 plt.show()
 
-
-
-# ------------------------------------------------------
-# Dummy inputs for profiling
-# ------------------------------------------------------
-dummy_x0 = torch.randn(1, 12).to(device)
-dummy_seq = torch.randn(1, 50, 4).to(device)
-
-model = model.to(device).eval()
-
-# ------------------------------------------------------
-# 1) THOP MACs + Params
-# ------------------------------------------------------
-import time
-from thop import profile
-macs, params = profile(model, inputs=(dummy_x0, dummy_seq), verbose=False)
-
-print(f"MACs:   {macs / 1e6:.3f} M")
-print(f"Params: {params / 1e3:.1f} K")
-
-# ------------------------------------------------------
-# 2) True inference latency (ms per single forward)
-# ------------------------------------------------------
-def measure_latency(model, x0, u_seq, warmup=20, iters=200):
-    # warmup
-    for _ in range(warmup):
-        _ = model(x0, u_seq)
-
-    torch.cuda.synchronize()
-    start = time.time()
-
-    for _ in range(iters):
-        _ = model(x0, u_seq)
-
-    torch.cuda.synchronize()
-    end = time.time()
-
-    return (end - start) / iters * 1000  # ms
-
-T_inf = measure_latency(model, dummy_x0, dummy_seq)
-print(f"Inference time: {T_inf:.4f} ms/step")
-
-# ------------------------------------------------------
-# Optional: dump in dict format for your LaTeX table
-# ------------------------------------------------------
-metrics_entry = {
-    "MACs_M": macs / 1e6,
-    "Params_K": params / 1e3,
-    "T_inf_ms": T_inf,
-}
-print(metrics_entry)
 
 # =====================================================================
 # === OPTIONAL: EXPORT 1-STEP MODEL FOR PROFILING =====================
