@@ -149,6 +149,22 @@ Use `results/model_comparison.py` or `results/model_comparison.ipynb` to compare
 python results/model_comparison.py
 ```
 
+### 4. Model Export & Profiling
+
+Trained models can be exported and profiled on the target STM32 platform using ST Edge AI Developer Cloud.
+
+```bash
+python utils/export_models.py
+```
+
+The process to benchmark the execution time is as follows:
+* Find the exported ONNX models under `out/export` and upload them to https://stedgeai-dc.st.com/home
+* Select the _STM32 MCUs_ platform
+* Export in `float32` precision, with no quantization
+* Select the _Balance between RAM size and inference time_ mode
+* Profile on the _STM32F469I-DISCO_ board, which matches the Crazyflie's STM32F405 in terms of CPU micro-architecture and memory hierarchy
+* Rescale the profiled execution times to account for the different clock rates (180MHz vs 168MHz, respectively)
+
 ## Models Description
 
 `models/models.py` implements:
