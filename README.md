@@ -181,3 +181,31 @@ Additional resources are available in the `.dev` branch (check out `origin/dev`)
 -   **`simulator/`**: A high-fidelity JAX-based quadrotor dynamics simulator.
 -   **`processing/`**: Scripts for processing raw ROS bag files into CSV/Parquet formats used by this repo.
 -   **`wheels/`**: Pre-built wheels for PyTorch3D (check if they match your system).
+
+## Publications
+If you use this work in an academic context, we kindly ask you to cite the following publication:
+* R. Busetto, E. Cereda, M. Forgione, G. Maroni, D. Piga, D. Palossi, ‘Nonlinear System Identification Nano-drone Benchmark’, arXiv pre-print 2512.14450, 2025 [arXiv](https://arxiv.org/abs/2512.14450).
+  
+```bibtex
+@misc{busetto2025sysid,
+  title={Nonlinear System Identification Nano-drone Benchmark}, 
+  author={Riccardo Busetto and Elia Cereda and Marco Forgione and Gabriele Maroni and Dario Piga and Daniele Palossi},
+  year={2025},
+  eprint={2512.14450},
+  archivePrefix={arXiv},
+  primaryClass={eess.SY},
+  url={https://arxiv.org/abs/2512.14450}, 
+}
+```
+
+## Contributors
+Riccardo Busetto<sup>*1</sup>,
+Elia Cereda<sup>*1</sup>,
+Marco Forgione<sup>1</sup>,
+Gabriele Maroni<sup>1</sup>,
+Dario Piga<sup>1</sup>,
+Daniele Palossi<sup>1,2</sup>.
+
+<sup>* </sup>Equal contribution.<br>
+<sup>1 </sup>Dalle Molle Institute for Artificial Intelligence (IDSIA), USI and SUPSI, Switzerland.<br>
+<sup>2 </sup>Integrated Systems Laboratory (IIS) of ETH Zürich, Switzerland.<br>
