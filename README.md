@@ -111,7 +111,7 @@ pip install -r requirements.txt
 
 ### Step 2: Install PyTorch3D
 
-This project uses `pytorch3d` for 3D transformations (quaternions). If installation from requirements.txt, should file, try to build from sources:
+This project uses `pytorch3d` for 3D transformations (quaternions). If installation from requirements.txt, should fail, try to build from sources:
 
 **Build from source / Download wheels**
 You can download wheels from the [PyTorch3D Wheel Builder](https://miropsota.github.io/torch_packages_builder/pytorch3d/) or follow the official [PyTorch3D installation guide](https://github.com/facebookresearch/pytorch3d/blob/main/INSTALL.md).
