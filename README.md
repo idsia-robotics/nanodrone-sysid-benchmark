@@ -184,17 +184,19 @@ Additional resources are available in the `.dev` branch (check out `origin/dev`)
 
 ## Publications
 If you use this work in an academic context, we kindly ask you to cite the following publication:
-* R. Busetto, E. Cereda, M. Forgione, G. Maroni, D. Piga, D. Palossi, ‘Nonlinear System Identification Nano-drone Benchmark’, arXiv pre-print 2512.14450, 2025 [arXiv](https://arxiv.org/abs/2512.14450).
+* R. Busetto, E. Cereda, M. Forgione, G. Maroni, D. Piga, D. Palossi, ‘Nonlinear System Identification for a Nano-drone Benchmark’, Control Engineering Practice, 2026 [ScienceDirect](https://www.sciencedirect.com/science/article/pii/S0967066126001152) [arXiv](https://arxiv.org/abs/2512.14450).
   
 ```bibtex
-@misc{busetto2025sysid,
-  title={Nonlinear System Identification Nano-drone Benchmark}, 
-  author={Riccardo Busetto and Elia Cereda and Marco Forgione and Gabriele Maroni and Dario Piga and Daniele Palossi},
-  year={2025},
-  eprint={2512.14450},
-  archivePrefix={arXiv},
-  primaryClass={eess.SY},
-  url={https://arxiv.org/abs/2512.14450}, 
+@article{busetto2025sysid,
+  title = {Nonlinear system identification for a nano-drone benchmark},
+  author = {Riccardo Busetto and Elia Cereda and Marco Forgione and Gabriele Maroni and Dario Piga and Daniele Palossi},
+  journal = {Control Engineering Practice},
+  volume = {172},
+  pages = {106871},
+  year = {2026},
+  issn = {0967-0661},
+  doi = {https://doi.org/10.1016/j.conengprac.2026.106871},
+  url = {https://www.sciencedirect.com/science/article/pii/S0967066126001152}, 
 }
 ```
 
