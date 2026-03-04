@@ -23,8 +23,8 @@
 
 This repository accompanies the paper:
 
-**“Nonlinear System Identification Nano-drone Benchmark”**  
-submitted to the *Special Issue on Machine Learning and Control Engineering*.
+**“Nonlinear System Identification for a Nano-drone Benchmark”**  
+published in *Control Engineering Practice - Special Issue on Benchmark Control Applications*.
 
 It provides a **reproducible benchmark for nonlinear system identification** based on **real-world flight data** collected from a **Crazyflie 2.1 Brushless nano-quadrotor**, together with reference models, training scripts, and a standardized multi-step evaluation protocol.
 
@@ -187,16 +187,16 @@ If you use this work in an academic context, we kindly ask you to cite the follo
 * R. Busetto, E. Cereda, M. Forgione, G. Maroni, D. Piga, D. Palossi, ‘Nonlinear System Identification for a Nano-drone Benchmark’, Control Engineering Practice, 2026 [ScienceDirect](https://www.sciencedirect.com/science/article/pii/S0967066126001152) [arXiv](https://arxiv.org/abs/2512.14450).
   
 ```bibtex
-@article{busetto2025sysid,
-  title = {Nonlinear system identification for a nano-drone benchmark},
-  author = {Riccardo Busetto and Elia Cereda and Marco Forgione and Gabriele Maroni and Dario Piga and Daniele Palossi},
-  journal = {Control Engineering Practice},
-  volume = {172},
-  pages = {106871},
-  year = {2026},
-  issn = {0967-0661},
-  doi = {https://doi.org/10.1016/j.conengprac.2026.106871},
-  url = {https://www.sciencedirect.com/science/article/pii/S0967066126001152}, 
+@article{BUSETTO2026106871,
+title = {Nonlinear system identification for a nano-drone benchmark},
+journal = {Control Engineering Practice},
+volume = {172},
+pages = {106871},
+year = {2026},
+issn = {0967-0661},
+doi = {https://doi.org/10.1016/j.conengprac.2026.106871},
+url = {https://www.sciencedirect.com/science/article/pii/S0967066126001152},
+author = {Riccardo Busetto and Elia Cereda and Marco Forgione and Gabriele Maroni and Dario Piga and Daniele Palossi},
 }
 ```
 
