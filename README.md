@@ -23,7 +23,7 @@
 
 This repository accompanies the paper:
 
-**“Nonlinear System Identification for a Nano-drone Benchmark”**  
+[**“Nonlinear System Identification for a Nano-drone Benchmark”**](https://www.sciencedirect.com/science/article/pii/S0967066126001152)
 published in *Control Engineering Practice - Special Issue on Benchmark Control Applications*.
 
 It provides a **reproducible benchmark for nonlinear system identification** based on **real-world flight data** collected from a **Crazyflie 2.1 Brushless nano-quadrotor**, together with reference models, training scripts, and a standardized multi-step evaluation protocol.
