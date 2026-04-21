@@ -384,7 +384,7 @@ def plot_3d_traj(X_ref, traj_type):
     return fig
 
 
-def plot_multistate_predictions(dfs, h=50, N_start=0, N_end=None):
+def plot_multistate_predictions(dfs, h=50, N_start=0, N_end=None, save_fig=False):
     """
     Create a 4x3 grid of time-series plots comparing true vs. predicted trajectories
     (h-step ahead) for each state variable.
@@ -423,9 +423,9 @@ def plot_multistate_predictions(dfs, h=50, N_start=0, N_end=None):
             ax = axs[r, c]
 
             # --- Smoothed signals ---
-            neur = dfs["Residual"][pred_col][N_start:N_end].rolling(20, min_periods=1, center=True).mean()
-            res  = dfs["Phys+Res"][pred_col][N_start:N_end].rolling(20, min_periods=1, center=True).mean()
-            lstm = dfs["LSTM"][pred_col][N_start:N_end].rolling(20, min_periods=1, center=True).mean()
+            neur = dfs["Res-MLP"][pred_col][N_start:N_end].rolling(20, min_periods=1, center=True).mean()
+            res  = dfs["Hybrid"][pred_col][N_start:N_end].rolling(20, min_periods=1, center=True).mean()
+            lstm = dfs["Res-LSTM"][pred_col][N_start:N_end].rolling(20, min_periods=1, center=True).mean()
             base = dfs["Naive"][pred_col][N_start:N_end].rolling(20, min_periods=1, center=True).mean()
             phys = dfs["Physics"][pred_col][N_start:N_end].rolling(20, min_periods=1, center=True).mean()
             true = dfs["Naive"][state][N_start + h:N_end + h].rolling(20, min_periods=1, center=True).mean()
@@ -433,9 +433,9 @@ def plot_multistate_predictions(dfs, h=50, N_start=0, N_end=None):
             # --- Plot ---
             ax.plot(t[N_start + h:N_end + h], base, '-', color='tab:red', label='Naïve', linewidth=2, alpha=0.2)
             ax.plot(t[N_start + h:N_end + h], phys, '-', color='tab:blue', label='Physics', linewidth=1.2)
-            ax.plot(t[N_start + h:N_end + h], neur, '-', color='tab:orange', label='Residual', linewidth=1.2)
-            ax.plot(t[N_start + h:N_end + h], res, '-', color='tab:purple', label='Phys+Res', linewidth=1.2)
-            ax.plot(t[N_start + h:N_end + h], lstm, '-', color='tab:green', label='LSTM', linewidth=1.2)
+            ax.plot(t[N_start + h:N_end + h], neur, '-', color='tab:orange', label='Res-MLP', linewidth=1.2)
+            ax.plot(t[N_start + h:N_end + h], res, '-', color='tab:purple', label='Hybrid', linewidth=1.2)
+            ax.plot(t[N_start + h:N_end + h], lstm, '-', color='tab:green', label='Res-LSTM', linewidth=1.2)
             ax.plot(t[N_start + h:N_end + h], true, 'k--', label='GT', linewidth=1.5)
 
             # --- Aesthetics ---
@@ -477,7 +477,7 @@ def plot_multistate_predictions(dfs, h=50, N_start=0, N_end=None):
     plt.subplots_adjust(top=0.86, bottom=0.12, hspace=0.25, wspace=0.3)
 
     # Reorder legend so Baseline is FIRST
-    legend_order = ["GT", "Naïve", "Physics", "Residual", "Phys+Res", "LSTM"]
+    legend_order = ["GT", "Naïve", "Physics", "Res-MLP", "Hybrid", "Res-LSTM"]
     legend_handles = [handles[labels.index(m)] for m in legend_order]
 
     fig.legend(
@@ -488,7 +488,8 @@ def plot_multistate_predictions(dfs, h=50, N_start=0, N_end=None):
     fontsize=14
     )
 
-    plt.savefig('new_lineplots_models.pdf', bbox_inches='tight')
+    if save_fig:
+        plt.savefig('../figures/new_lineplots_models.pdf', bbox_inches='tight')
     plt.show()
 
 def plot_multistate_boxplots(df_base, df_lstm, df_neur, df_res,
@@ -530,9 +531,9 @@ def plot_multistate_boxplots(df_base, df_lstm, df_neur, df_res,
     # --- Model colors ---
     colors = {
         "Naïve": "tab:red",
-        "Residual": "tab:purple",
-        "Neural": "tab:orange",
-        "LSTM": "tab:green",
+        "Hybrid": "tab:purple",
+        "Res-MLP": "tab:orange",
+        "Res-LSTM": "tab:green",
     }
 
     fig, axs = plt.subplots(4, 3, figsize=(12, 6), dpi=100)
@@ -627,13 +628,13 @@ def plot_metrics(model_metrics, save_fig=False):
     ]
 
     # Plotting order: Baseline LAST
-    plot_order = ["Physics", "Residual", "Phys+Res", "LSTM", "Naïve"]
+    plot_order = ["Physics", "Res-MLP", "Hybrid", "Res-LSTM", "Naïve"]
 
     model_styles = {
         "Physics": ('-', 'tab:blue'),
-        "Residual": ('-', 'tab:orange'),
-        "Phys+Res": ('-', 'tab:purple'),
-        "LSTM": ('-', 'tab:green'),
+        "Res-MLP": ('-', 'tab:orange'),
+        "Hybrid": ('-', 'tab:purple'),
+        "Res-LSTM": ('-', 'tab:green'),
         "Naïve": ('--', 'tab:red'),
     }
 
@@ -672,7 +673,7 @@ def plot_metrics(model_metrics, save_fig=False):
     handles, labels = axs[0].get_legend_handles_labels()
 
     # Reorder legend so Baseline is FIRST
-    legend_order = ["Naïve", "Physics", "Residual", "Phys+Res", "LSTM"]
+    legend_order = ["Naïve", "Physics", "Res-MLP", "Hybrid", "Res-LSTM"]
     legend_handles = [handles[labels.index(m)] for m in legend_order]
 
     fig.legend(
